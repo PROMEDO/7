@@ -119,12 +119,10 @@ function formatShortDayMonth(d: Date): string {
 export const StatsPage: React.FC = () => {
   const prefersReducedMotion = useReducedMotion();
   const {
-    rest,
     resolvedPlan,
     terms,
     currency,
     allOrders,
-    customTabLabel,
     openUpgradeModal,
   } = useDashboard();
 
@@ -498,21 +496,6 @@ export const StatsPage: React.FC = () => {
 
   return (
     <div className="mp-stats-page">
-      {/* Compact Header */}
-      <motion.div
-        className="mp-stats-head"
-        initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-      >
-        <div>
-          <h1 className="mp-stats-title">
-            {customTabLabel('stats', 'الإحصائيات')} • {rest.n}
-          </h1>
-          <p className="mp-stats-sub">تابع مبيعاتك وطلباتك بوضوح وبساطة</p>
-        </div>
-      </motion.div>
-
       {/* Locked State for Free Plan */}
       {!resolvedPlan.perms.analytics ? (
         <div
