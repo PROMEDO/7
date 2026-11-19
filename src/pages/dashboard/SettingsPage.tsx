@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   AlertCircle,
@@ -34,6 +34,7 @@ import {
   UtensilsCrossed,
 } from 'lucide-react';
 import { MediaLibraryModal } from '../../components/MediaLibraryModal';
+import { fetchDashboardTelegramStatusApi } from '../../utils/adminApi';
 import { sanitizeSlug } from '../../utils/businessDefaults';
 import {
   WEEK_DAYS_ORDER,
@@ -101,6 +102,8 @@ export const SettingsPage: React.FC = () => {
     allowTable,
     setAllowTable,
     rest,
+    activeRid,
+    mainRid,
     setActiveTab,
     acceptClosedOrders,
     setAcceptClosedOrders,
@@ -135,11 +138,45 @@ export const SettingsPage: React.FC = () => {
     setDeliveryZonesState,
   } = useDashboard();
 
+  const targetTelegramRid = activeRid || mainRid || rest.id;
+  const hasLocalTelegram = Boolean(
+    rest.telegramLinked ||
+      (rest.telegramChatId && String(rest.telegramChatId).trim()) ||
+      (rest.telegramPhone && String(rest.telegramPhone).trim() && rest.telegramUnlinkedManually !== true)
+  );
+  const [serverTelegramLinked, setServerTelegramLinked] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!targetTelegramRid) {
+      setServerTelegramLinked(false);
+      return;
+    }
+    setServerTelegramLinked(null);
+    void fetchDashboardTelegramStatusApi(targetTelegramRid)
+      .then((res) => {
+        if (!active) return;
+        setServerTelegramLinked(Boolean(res?.linked));
+      })
+      .catch(() => {
+        if (active) setServerTelegramLinked(hasLocalTelegram);
+      });
+    return () => {
+      active = false;
+    };
+  }, [targetTelegramRid, rest.telegramPhone, rest.telegramLinked, rest.telegramUnlinkedManually, hasLocalTelegram]);
+
   const previewSubdomainHost = subdomainEnabled
     ? `${restSlug || 'your-store'}.${baseDomain}`
     : `${baseDomain}/${restSlug || 'your-store'}`;
 
-  const missingTelegram = orderChannel !== 'whatsapp' && !rest.telegramChatId;
+  const isTelegramConnected =
+    serverTelegramLinked === true ||
+    (serverTelegramLinked !== false && hasLocalTelegram);
+  const missingTelegram =
+    orderChannel !== 'whatsapp' &&
+    !isTelegramConnected &&
+    (hasLocalTelegram || serverTelegramLinked !== null);
   const missingWhatsapp = orderChannel !== 'telegram' && !restWa.trim() && !restPhone.trim();
   const hasOpsAlert = missingTelegram || missingWhatsapp;
 
