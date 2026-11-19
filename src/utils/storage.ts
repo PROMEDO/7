@@ -3334,7 +3334,6 @@ export function ensureDemoRestaurant() {
         published: true,
         available: true,
         prepTime: '12 دقيقة',
-        badges: [{ type: 'red', text: 'الأكثر طلباً' }],
         sizes: [
           { n: 'سنجل (شريحة واحدة)', p: 6500 },
           { n: 'دبل (شريحتين)', p: 9000 },

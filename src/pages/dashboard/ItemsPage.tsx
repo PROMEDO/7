@@ -1258,34 +1258,15 @@ export const ItemsPage: React.FC = () => {
           </motion.div>
 
           {/* Centered Action Button (Create mode only; editing auto-saves live) */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginTop: '20px',
-            }}
-          >
-            {editingItemId ? (
-              <button
-                type="button"
-                onClick={() => setIsItemEditorOpen(false)}
-                className="btn p"
-                style={{
-                  minWidth: '180px',
-                  height: '44px',
-                  borderRadius: '12px',
-                  padding: '0 26px',
-                  fontSize: '14.5px',
-                  fontWeight: 800,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                تم — العودة للعناصر
-              </button>
-            ) : (
+          {!editingItemId && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginTop: '20px',
+              }}
+            >
               <button
                 type="submit"
                 className="btn p"
@@ -1303,8 +1284,8 @@ export const ItemsPage: React.FC = () => {
               >
                 إضافة عنصر
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </form>
 
         <MediaLibraryModal

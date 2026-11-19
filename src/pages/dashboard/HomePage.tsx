@@ -7,16 +7,10 @@ import React, { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowUpRight,
-  Banknote,
   CheckCircle2,
   Lightbulb,
-  ShoppingBag,
   Sparkles,
-  TrendingDown,
-  TrendingUp,
-  Users,
 } from 'lucide-react';
-import { formatNumber } from '../../utils/storage';
 import { fetchDashboardTelegramStatusApi } from '../../utils/adminApi';
 import { DEFAULT_MEDIA_ASSETS } from '../../utils/businessDefaults';
 import { Ml7Text } from '../../components/Ml7Text';
@@ -30,8 +24,6 @@ export const HomePage: React.FC = () => {
     terms,
     allCategories,
     allItems,
-    allOrders,
-    currency,
     setActiveTab,
     activeRid,
     mainRid,
@@ -200,72 +192,6 @@ export const HomePage: React.FC = () => {
   const readinessPercent = Math.round((completedTipsCount / dynamicTips.length) * 100);
   const allTipsCompleted = completedTipsCount >= dynamicTips.length;
 
-  const nowMs = Date.now();
-  const windowMs = 30 * 24 * 60 * 60 * 1000;
-  const validOrders = allOrders.filter(
-    (o) => o.st !== 'cancelled' && o.status !== 'cancelled'
-  );
-  const netSalesAmount = validOrders.reduce(
-    (sum, o) => sum + (Number(o.tot ?? o.total ?? 0) || 0),
-    0
-  );
-
-  const currentOrders = validOrders.filter((o) => {
-    const raw = o.at ?? o.createdAt;
-    const ms = typeof raw === 'number' ? raw : raw ? new Date(raw).getTime() : 0;
-    return ms > 0 && nowMs - ms <= windowMs;
-  });
-  const prevOrders = validOrders.filter((o) => {
-    const raw = o.at ?? o.createdAt;
-    const ms = typeof raw === 'number' ? raw : raw ? new Date(raw).getTime() : 0;
-    return ms > 0 && nowMs - ms > windowMs && nowMs - ms <= windowMs * 2;
-  });
-
-  const currentSales = currentOrders.reduce(
-    (sum, o) => sum + (Number(o.tot ?? o.total ?? 0) || 0),
-    0
-  );
-  const prevSales = prevOrders.reduce(
-    (sum, o) => sum + (Number(o.tot ?? o.total ?? 0) || 0),
-    0
-  );
-
-  const calcChangePct = (curr: number, prev: number) => {
-    if (prev > 0) return ((curr - prev) / prev) * 100;
-    if (curr > 0) return 100;
-    return 0;
-  };
-
-  const visitsCount = Math.max(0, Number(rest.v || 0));
-  const prevVisitsCount = Math.max(0, Number((rest as { vPrev?: number }).vPrev || 0));
-  const visitsPct = calcChangePct(visitsCount, prevVisitsCount);
-  const ordersPct = calcChangePct(currentOrders.length, prevOrders.length);
-  const salesPct = calcChangePct(currentSales, prevSales);
-
-  const homeStats = [
-    {
-      id: 'visits',
-      label: 'عدد زيارات القائمة',
-      value: formatNumber(visitsCount),
-      pct: visitsPct,
-      Icon: Users,
-    },
-    {
-      id: 'orders',
-      label: 'صافي الطلبات',
-      value: formatNumber(validOrders.length),
-      pct: ordersPct,
-      Icon: ShoppingBag,
-    },
-    {
-      id: 'sales',
-      label: 'صافي المبيعات',
-      value: `${formatNumber(netSalesAmount)} ${currency}`,
-      pct: salesPct,
-      Icon: Banknote,
-    },
-  ];
-
   const activePlanName = resolvedPlan.plan.n;
 
   return (
@@ -292,7 +218,7 @@ export const HomePage: React.FC = () => {
             </div>
           )}
           <h1 style={{ margin: '0 0 4px', fontSize: 'clamp(19px, 3vw, 24px)', fontWeight: 900, color: 'var(--ink)' }}>
-            {`أهلاً بك في ${rest.n} 👋`}
+            {rest.n}
           </h1>
           <div className="mp-home-welcome-meta">
             <span>
@@ -301,48 +227,6 @@ export const HomePage: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* 3 Organized Transparent KPI Rows */}
-      <section className="mp-home-stats-section" aria-label="ملخص الأداء">
-        <div className="mp-home-stats-list">
-          {homeStats.map((stat, idx) => {
-            const IconComp = stat.Icon;
-            const isDown = stat.pct < 0;
-            const TrendIcon = isDown ? TrendingDown : TrendingUp;
-            const trendColor = isDown ? '#ef4444' : '#10b981';
-            const formattedPct = `${Math.abs(stat.pct).toFixed(2)}%`;
-
-            return (
-              <motion.div
-                key={stat.id}
-                className="mp-home-stat-row"
-                initial={prefersReducedMotion ? false : { opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{
-                  duration: 0.85,
-                  delay: prefersReducedMotion ? 0 : 0.05 + idx * 0.07,
-                  ease: [0.16, 1, 0.3, 1],
-                }}
-              >
-                <div className="mp-home-stat-main">
-                  <span className="mp-home-stat-icon" aria-hidden="true">
-                    <IconComp size={20} strokeWidth={1.85} />
-                  </span>
-                  <div className="mp-home-stat-text">
-                    <div className="mp-home-stat-value tabular-nums">{stat.value}</div>
-                    <div className="mp-home-stat-label">{stat.label}</div>
-                  </div>
-                </div>
-
-                <div className="mp-home-stat-trend tabular-nums" style={{ color: trendColor }}>
-                  <span>{formattedPct}</span>
-                  <TrendIcon size={15} strokeWidth={2.2} />
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-      </section>
 
       {/* Checklist Section: transparent & borderless */}
       <section className="mp-home-section">

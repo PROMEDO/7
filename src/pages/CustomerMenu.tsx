@@ -973,9 +973,38 @@ const PublicMenuContent: React.FC<PublicMenuContentProps> = ({
   // Active automatic menu discount (Countdown Timer discount OR Happy Hour discount)
   const activeMenuDiscount = useMemo(() => getActiveMenuDiscount(addons, nowMs), [addons, nowMs]);
 
-  // Real order frequency map per item name (for "الأكثر طلباً" in Toters & badges)
+  const [serverPopularCounts, setServerPopularCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    let active = true;
+    if (!restaurantId) {
+      setServerPopularCounts({});
+      return;
+    }
+    fetch(`/api/public/popular-items/${encodeURIComponent(restaurantId)}`, {
+      cache: 'no-store',
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!active || !data || typeof data.counts !== 'object' || !data.counts) return;
+        setServerPopularCounts(data.counts as Record<string, number>);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [restaurantId, syncTick, lastOrderSummary?.id]);
+
+  // Real order frequency map per item name strictly from database orders
   const itemOrderCounts = useMemo(() => {
     const counts = new Map<string, number>();
+    Object.entries(serverPopularCounts).forEach(([k, val]) => {
+      const key = String(k || '').trim().toLowerCase();
+      const qty = Math.max(0, Number(val) || 0);
+      if (key && qty > 0) counts.set(key, qty);
+    });
+
+    const localCounts = new Map<string, number>();
     const restOrders = getCollection<Order>('orders').filter(
       (o) => o.rid === restaurantId && o.st !== 'cancelled' && o.status !== 'cancelled'
     );
@@ -983,11 +1012,44 @@ const PublicMenuContent: React.FC<PublicMenuContentProps> = ({
       (o.items || []).forEach((line) => {
         const key = String(line.n || '').trim().toLowerCase();
         if (!key) return;
-        counts.set(key, (counts.get(key) || 0) + Math.max(1, Number(line.q) || 1));
+        localCounts.set(key, (localCounts.get(key) || 0) + Math.max(1, Number(line.q) || 1));
       });
     });
+
+    localCounts.forEach((qty, key) => {
+      const existing = counts.get(key) || 0;
+      if (qty > existing) counts.set(key, qty);
+    });
+
     return counts;
-  }, [restaurantId, syncTick, lastOrderSummary?.id]);
+  }, [restaurantId, serverPopularCounts, syncTick, lastOrderSummary?.id]);
+
+  // Real database-backed most-ordered ranking (only items with actual DB orders)
+  const { mostOrderedItems, popularItemIds } = useMemo(() => {
+    const ranked = allItems
+      .map((it) => ({
+        it,
+        qty: itemOrderCounts.get(it.n.trim().toLowerCase()) || 0,
+      }))
+      .filter((entry) => entry.qty > 0)
+      .sort((a, b) => b.qty - a.qty);
+
+    const topIds = new Set<string>();
+    if (ranked.length > 0) {
+      const cutoffIdx = Math.min(2, ranked.length - 1);
+      const minTopQty = ranked[cutoffIdx].qty;
+      ranked.forEach((entry, idx) => {
+        if (idx <= cutoffIdx || entry.qty >= minTopQty) {
+          topIds.add(entry.it.id);
+        }
+      });
+    }
+
+    return {
+      mostOrderedItems: ranked.map((entry) => entry.it),
+      popularItemIds: topIds,
+    };
+  }, [allItems, itemOrderCounts]);
 
   // Cart totals, discounts, minOrder & Free delivery calculation
   const totalCount = cart.reduce((s, line) => s + line.qty, 0);
@@ -1158,6 +1220,25 @@ const PublicMenuContent: React.FC<PublicMenuContentProps> = ({
       ];
     });
     showToast(`تمت إضافة "${it.n}" للسلة`);
+  };
+
+  const decrementItemFromCart = (itemId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setCart((prev) => {
+      let targetIdx = -1;
+      for (let i = prev.length - 1; i >= 0; i--) {
+        if (prev[i].itemId === itemId) {
+          targetIdx = i;
+          break;
+        }
+      }
+      if (targetIdx === -1) return prev;
+      const target = prev[targetIdx];
+      if (target.qty <= 1) {
+        return prev.filter((_, i) => i !== targetIdx);
+      }
+      return prev.map((line, i) => (i === targetIdx ? { ...line, qty: line.qty - 1 } : line));
+    });
   };
 
   const addSpecialCustomLine = (id: string, name: string, price: number, notes?: string, img?: string) => {
@@ -2230,25 +2311,7 @@ const PublicMenuContent: React.FC<PublicMenuContentProps> = ({
             });
           }
 
-          const scoredMostOrdered = allItems
-            .map((it) => {
-              const ordQty = itemOrderCounts.get(it.n.trim().toLowerCase()) || 0;
-              const hasBestBadge = Boolean(
-                it.badges?.some(
-                  (b) =>
-                    /طلباً|الأكثر|شائع|أفضل|best|popular/i.test(String(b.text || '')) ||
-                    b.type === 'red'
-                )
-              );
-              const hasAnyBadge = Boolean(it.badges && it.badges.length > 0);
-              const score = ordQty * 10 + (hasBestBadge ? 5 : hasAnyBadge ? 2 : 0);
-              return { it, score };
-            })
-            .filter((entry) => entry.score > 0)
-            .sort((a, b) => b.score - a.score)
-            .map((entry) => entry.it);
-
-          const mostOrderedShelf = (scoredMostOrdered.length >= 2 ? scoredMostOrdered : allItems).slice(0, 8);
+          const mostOrderedShelf = mostOrderedItems.slice(0, 8);
 
           const renderShelf = (heading: string, items: MenuItem[]) => {
             if (items.length === 0) return null;
@@ -2280,15 +2343,45 @@ const PublicMenuContent: React.FC<PublicMenuContentProps> = ({
                               <Utensils size={24} />
                             </div>
                           )}
-                          <button
-                            type="button"
-                            className={`pm-toters-plus-btn ${qty > 0 ? 'has-qty' : ''}`}
-                            disabled={unavailable}
-                            aria-label={`أضف للسلة: ${it.n}`}
-                            onClick={(e) => quickAddOrOpenModal(it, e)}
-                          >
-                            {qty > 0 ? <span className="tabular-nums">{qty}</span> : <Plus size={18} strokeWidth={2.5} />}
-                          </button>
+                          {!unavailable && qty > 0 ? (
+                            <div
+                              className="pm-toters-qty-pill"
+                              dir="rtl"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                className="pm-toters-qty-pill-btn"
+                                aria-label={qty === 1 ? `حذف ${it.n} من السلة` : `إنقاص كمية ${it.n}`}
+                                onClick={(e) => decrementItemFromCart(it.id, e)}
+                              >
+                                {qty === 1 ? <Trash2 size={13} strokeWidth={2.3} /> : <Minus size={14} strokeWidth={2.6} />}
+                              </button>
+                              <span className="pm-toters-qty-pill-val tabular-nums">{qty}</span>
+                              <button
+                                type="button"
+                                className="pm-toters-qty-pill-btn"
+                                aria-label={`زيادة كمية ${it.n}`}
+                                onClick={(e) => quickAddOrOpenModal(it, e)}
+                              >
+                                <Plus size={14} strokeWidth={2.7} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="pm-toters-plus-btn"
+                              disabled={unavailable}
+                              aria-label={`أضف للسلة: ${it.n}`}
+                              onClick={(e) => quickAddOrOpenModal(it, e)}
+                            >
+                              {unavailable ? (
+                                itemEval?.outOfSchedule ? <Clock size={13} /> : 'نفد'
+                              ) : (
+                                <Plus size={16} strokeWidth={2.6} />
+                              )}
+                            </button>
+                          )}
                         </div>
                         <b className="pm-toters-shelf-title">{it.n}</b>
                         <span className="pm-toters-shelf-price tabular-nums">{priceInfo.main}</span>
@@ -2442,8 +2535,7 @@ const PublicMenuContent: React.FC<PublicMenuContentProps> = ({
                         const unavailable = !itemEval.available;
 
                         if (isToters) {
-                          const ordCount = itemOrderCounts.get(it.n.trim().toLowerCase()) || 0;
-                          const isPopular = ordCount > 0 || Boolean(it.badges && it.badges.length > 0);
+                          const isPopular = popularItemIds.has(it.id);
                           return (
                             <article
                               key={it.id}
@@ -2476,21 +2568,45 @@ const PublicMenuContent: React.FC<PublicMenuContentProps> = ({
                                     <Utensils size={22} />
                                   </div>
                                 )}
-                                <button
-                                  type="button"
-                                  className={`pm-toters-plus-btn ${qty > 0 ? 'has-qty' : ''}`}
-                                  disabled={unavailable}
-                                  aria-label={`أضف للسلة: ${it.n}`}
-                                  onClick={(e) => quickAddOrOpenModal(it, e)}
-                                >
-                                  {unavailable ? (
-                                    itemEval.outOfSchedule ? <Clock size={14} /> : 'نفد'
-                                  ) : qty > 0 ? (
-                                    <span className="tabular-nums">{qty}</span>
-                                  ) : (
-                                    <Plus size={18} strokeWidth={2.5} />
-                                  )}
-                                </button>
+                                {!unavailable && qty > 0 ? (
+                                  <div
+                                    className="pm-toters-qty-pill"
+                                    dir="rtl"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <button
+                                      type="button"
+                                      className="pm-toters-qty-pill-btn"
+                                      aria-label={qty === 1 ? `حذف ${it.n} من السلة` : `إنقاص كمية ${it.n}`}
+                                      onClick={(e) => decrementItemFromCart(it.id, e)}
+                                    >
+                                      {qty === 1 ? <Trash2 size={13} strokeWidth={2.3} /> : <Minus size={14} strokeWidth={2.6} />}
+                                    </button>
+                                    <span className="pm-toters-qty-pill-val tabular-nums">{qty}</span>
+                                    <button
+                                      type="button"
+                                      className="pm-toters-qty-pill-btn"
+                                      aria-label={`زيادة كمية ${it.n}`}
+                                      onClick={(e) => quickAddOrOpenModal(it, e)}
+                                    >
+                                      <Plus size={14} strokeWidth={2.7} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="pm-toters-plus-btn"
+                                    disabled={unavailable}
+                                    aria-label={`أضف للسلة: ${it.n}`}
+                                    onClick={(e) => quickAddOrOpenModal(it, e)}
+                                  >
+                                    {unavailable ? (
+                                      itemEval.outOfSchedule ? <Clock size={13} /> : 'نفد'
+                                    ) : (
+                                      <Plus size={16} strokeWidth={2.6} />
+                                    )}
+                                  </button>
+                                )}
                               </div>
                             </article>
                           );
@@ -3109,7 +3225,7 @@ const PublicMenuContent: React.FC<PublicMenuContentProps> = ({
             </div>
 
             <div className={isToters ? 'pm-toters-sheet-body' : undefined} style={isToters ? undefined : { padding: '16px 18px 22px' }}>
-              {isToters && ((itemOrderCounts.get(activeProduct.n.trim().toLowerCase()) || 0) > 0 || (activeProduct.badges && activeProduct.badges.length > 0)) && (
+              {isToters && popularItemIds.has(activeProduct.id) && (
                 <div style={{ marginBottom: '6px' }}>
                   <span className="pm-toters-popular-pill">
                     <Flame size={12} fill="#f97316" color="#f97316" /> الأكثر طلباً
@@ -3118,7 +3234,16 @@ const PublicMenuContent: React.FC<PublicMenuContentProps> = ({
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
                 <h2 style={{ margin: 0, fontSize: isToters ? '21px' : '20px', fontWeight: 900, color: 'var(--pm-ink)' }}>{activeProduct.n}</h2>
-                {!isToters && activeProduct.badges?.map((b, i) => renderBadge(b, i))}
+                {!isToters &&
+                  activeProduct.badges
+                    ?.filter((b) => {
+                      const txt = String(b.text || '').trim();
+                      if (/^(الأكثر|الاكثر)\s*طلب/i.test(txt)) {
+                        return popularItemIds.has(activeProduct.id);
+                      }
+                      return true;
+                    })
+                    .map((b, i) => renderBadge(b, i))}
               </div>
 
               {(activeProduct.prepTime || activeProduct.calories || selectedSize?.cal) && (

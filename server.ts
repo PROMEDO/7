@@ -759,6 +759,40 @@ app.post('/api/db', async (req, res) => {
   }
 });
 
+app.get('/api/public/popular-items/:rid', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const rid = String(req.params.rid || '').trim();
+    if (!rid) {
+      return res.json({ ok: true, counts: {}, totalOrders: 0 });
+    }
+    const allData = await readAll(false);
+    const counts: Record<string, number> = {};
+    let totalOrders = 0;
+
+    for (const [k, v] of Object.entries(allData)) {
+      if (!k.startsWith('orders/') || !v || typeof v !== 'object') continue;
+      const rec = v as Record<string, unknown>;
+      if (String(rec.rid || '') !== rid) continue;
+      if (rec.st === 'cancelled' || rec.status === 'cancelled') continue;
+      totalOrders += 1;
+      const items = Array.isArray(rec.items) ? rec.items : [];
+      for (const rawLine of items) {
+        if (!rawLine || typeof rawLine !== 'object') continue;
+        const line = rawLine as Record<string, unknown>;
+        const nameKey = String(line.n || line.name || '').trim().toLowerCase();
+        if (!nameKey) continue;
+        const qty = Math.max(1, Number(line.q ?? line.qty ?? 1) || 1);
+        counts[nameKey] = (counts[nameKey] || 0) + qty;
+      }
+    }
+
+    return res.json({ ok: true, counts, totalOrders });
+  } catch (err: any) {
+    return res.status(500).json({ ok: false, error: err?.message || 'Database error', counts: {}, totalOrders: 0 });
+  }
+});
+
 app.get('/api/db-status', async (req, res) => {
   try {
     const supabaseHealth = await checkSupabaseHealth();
