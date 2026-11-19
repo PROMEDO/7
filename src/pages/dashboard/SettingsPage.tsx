@@ -3,14 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import React, { useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   AlertCircle,
   CheckCircle2,
+  Clock,
   Coins,
   Copy,
   ExternalLink,
+  Globe,
   Image as ImageIcon,
   Link2,
   Lock,
@@ -18,36 +20,42 @@ import {
   MessageCircle,
   Monitor,
   Moon,
+  Phone,
   Plus,
+  Power,
   Send,
   Share2,
   ShieldCheck,
+  SlidersHorizontal,
   Store,
   Sun,
   Trash2,
+  Truck,
   UtensilsCrossed,
 } from 'lucide-react';
 import { MediaLibraryModal } from '../../components/MediaLibraryModal';
 import { sanitizeSlug } from '../../utils/businessDefaults';
 import {
   WEEK_DAYS_ORDER,
-  surfaceCardStyle,
   themedInputStyle,
   useDashboard,
 } from './DashboardContext';
 
+type SettingsSectionTab = 'ops' | 'brand' | 'identity' | 'delivery';
+
 export const SettingsPage: React.FC = () => {
   const prefersReducedMotion = useReducedMotion();
+  const [sectionTab, setSectionTab] = useState<SettingsSectionTab>('ops');
   const [mediaPickerTarget, setMediaPickerTarget] = useState<'logo' | 'cover' | null>(null);
+  const waInputRef = useRef<HTMLInputElement | null>(null);
+
   const {
-    showToast,
     resolvedPlan,
     openUpgradeModal,
     menuThemeMode,
     handleSelectThemeMode,
     dashboardThemeMode,
     handleSelectDashboardThemeMode,
-    customTabLabel,
     baseDomain,
     fullSubdomainUrl,
     subdomainEnabled,
@@ -127,60 +135,65 @@ export const SettingsPage: React.FC = () => {
     setDeliveryZonesState,
   } = useDashboard();
 
-  const weekDaysOrder = WEEK_DAYS_ORDER;
-
-  const jumpTo = (id: string) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  };
-
   const previewSubdomainHost = subdomainEnabled
     ? `${restSlug || 'your-store'}.${baseDomain}`
     : `${baseDomain}/${restSlug || 'your-store'}`;
 
-  return (
-    <div style={{ maxWidth: '920px', margin: '0 auto' }}>
-      <motion.div
-        initial={prefersReducedMotion ? false : { opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
-        style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}
-      >
-        <div>
-          <h1 style={{ margin: '0 0 4px', fontSize: '23px', fontWeight: 900, color: 'var(--ink)' }}>
-            {customTabLabel('set', 'إعدادات المشروع والرابط المخصص ⚙️')}
-          </h1>
-          <p style={{ margin: 0, fontSize: '13.5px', color: 'var(--muted)' }}>
-            تحكم بالعملة، الدومين الفرعي، الشعار والغلاف، الدوام الأسبوعي، وأسعار التوصيل — يتم الحفظ تلقائياً.
-          </p>
-        </div>
-      </motion.div>
+  const missingTelegram = orderChannel !== 'whatsapp' && !rest.telegramChatId;
+  const missingWhatsapp = orderChannel !== 'telegram' && !restWa.trim() && !restPhone.trim();
+  const hasOpsAlert = missingTelegram || missingWhatsapp;
 
-      {/* Continuous Section Quick Jump Strip */}
+  const goToWhatsAppInput = () => {
+    setSectionTab('identity');
+    window.setTimeout(() => {
+      waInputRef.current?.focus();
+      waInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 220);
+  };
+
+  const tabs: Array<{ id: SettingsSectionTab; label: string; Icon: React.ElementType; alert?: boolean }> = [
+    { id: 'ops', label: 'التشغيل', Icon: SlidersHorizontal, alert: hasOpsAlert },
+    { id: 'brand', label: 'الرابط', Icon: Link2 },
+    { id: 'identity', label: 'الهوية', Icon: Store, alert: missingWhatsapp },
+    { id: 'delivery', label: 'الدوام', Icon: Clock },
+  ];
+
+  return (
+    <div className="mp-set2-page">
+      {/* Segmented Category Navigation */}
       <motion.div
-        className="mp-jump-strip"
+        className="mp-set2-tabs-bar"
+        role="tablist"
+        aria-label="أقسام الإعدادات"
         initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.85, delay: prefersReducedMotion ? 0 : 0.08, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
       >
-        {[
-          { id: 'sec-lang', label: '1. العملة والتشغيل والطلبات' },
-          { id: 'sec-slug', label: '2. الرابط والدومين' },
-          { id: 'sec-media', label: '3. الشعار والغلاف' },
-          { id: 'sec-identity', label: '4. الهوية والتواصل' },
-          { id: 'sec-delivery', label: '5. الدوام والتوصيل' },
-        ].map((sec) => (
-          <button
-            key={sec.id}
-            type="button"
-            className="mp-jump-btn"
-            onClick={() => jumpTo(sec.id)}
-          >
-            {sec.label}
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const isActive = sectionTab === tab.id;
+          const TabIcon = tab.Icon;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setSectionTab(tab.id)}
+              className={`mp-set2-tab-btn ${isActive ? 'active' : ''}`}
+            >
+              {isActive && (
+                <motion.span
+                  layoutId={prefersReducedMotion ? undefined : 'mp-set2-active-pill'}
+                  className="mp-set2-tab-pill"
+                  transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                />
+              )}
+              <TabIcon size={14} />
+              <span>{tab.label}</span>
+              {tab.alert && <span className="mp-set2-tab-alert" aria-hidden="true" />}
+            </button>
+          );
+        })}
       </motion.div>
 
       <form
@@ -188,799 +201,840 @@ export const SettingsPage: React.FC = () => {
           e.preventDefault();
           void flushAllPendingSaves();
         }}
-        className="mp-settings-sections"
       >
-        {/* SECTION 1: العملة وحالة التشغيل وطرق الطلب */}
-        <motion.section
-          id="sec-lang"
-          className="mp-set-sec"
-          initial={prefersReducedMotion ? false : { opacity: 0, y: 14 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.06 }}
-          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <div className="mp-set-sec-head">
-            <h2 className="mp-set-sec-title">
-              <span className="mp-set-sec-num">1</span>
-              <span>العملة وحالة المنيو وطرق الطلب</span>
-            </h2>
-          </div>
-
-          <div className="mp-set-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div
-                  style={{
-                    width: '42px',
-                    height: '42px',
-                    borderRadius: '12px',
-                    background: 'var(--soft)',
-                    color: 'var(--brand-ink, #34D399)',
-                    display: 'grid',
-                    placeItems: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Coins size={20} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--ink)', margin: '0 0 2px' }}>
-                    اختيار العملة
-                  </h3>
-                  <p style={{ fontSize: '12.5px', color: 'var(--muted)', margin: 0 }}>
-                    تُعرض بها أسعار الأطباق والفواتير في المنيو ولوحة التحكم.
-                  </p>
-                </div>
-              </div>
-
-              <select
-                value={restCurrency}
-                onChange={(e) => handleCurrencyChange(e.target.value)}
-                style={{
-                  ...themedInputStyle,
-                  width: 'auto',
-                  minWidth: '210px',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                }}
-              >
-                <option value="د.ع">د.ع — دينار عراقي (IQD)</option>
-                <option value="$">$ — دولار أمريكي (USD)</option>
-                <option value="ر.س">ر.س — ريال سعودي (SAR)</option>
-                <option value="د.إ">د.إ — درهم إماراتي (AED)</option>
-                <option value="د.ك">د.ك — دينار كويتي (KWD)</option>
-                <option value="د.أ">د.أ — دينار أردني (JOD)</option>
-                <option value="ر.ق">ر.ق — ريال قطري (QAR)</option>
-                <option value="د.ب">د.ب — دينار بحريني (BHD)</option>
-                <option value="ر.ع">ر.ع — ريال عماني (OMR)</option>
-                <option value="ج.م">ج.م — جنيه مصري (EGP)</option>
-                <option value="ل.ل">ل.ل — ليرة لبنانية (LBP)</option>
-                <option value="€">€ — يورو (EUR)</option>
-              </select>
-            </div>
-
-            <div style={{ height: '1px', background: 'var(--line)' }} />
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div
-                  style={{
-                    width: '42px',
-                    height: '42px',
-                    borderRadius: '12px',
-                    background: 'var(--soft)',
-                    color: 'var(--brand-ink, #34D399)',
-                    display: 'grid',
-                    placeItems: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  {menuThemeMode === 'light' ? (
-                    <Sun size={20} />
-                  ) : menuThemeMode === 'auto' ? (
-                    <Monitor size={20} />
-                  ) : (
-                    <Moon size={20} />
-                  )}
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--ink)', margin: '0 0 2px' }}>
-                    مظهر المنيو
-                  </h3>
-                  <p style={{ fontSize: '12.5px', color: 'var(--muted)', margin: 0 }}>
-                    فاتح أو غامق أو حسب جهاز الزبون
-                  </p>
-                </div>
-              </div>
-
-              <div className="mp-theme-icon-switch" role="group" aria-label="مظهر المنيو">
-                <button
-                  type="button"
-                  onClick={() => handleSelectThemeMode('light')}
-                  className={`mp-theme-icon-btn${menuThemeMode === 'light' ? ' is-active' : ''}`}
-                  aria-label="الوضع الفاتح"
-                  title="فاتح"
-                >
-                  <Sun size={17} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSelectThemeMode('dark')}
-                  className={`mp-theme-icon-btn${menuThemeMode === 'dark' ? ' is-active' : ''}`}
-                  aria-label="الوضع الغامق"
-                  title="غامق"
-                >
-                  <Moon size={17} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSelectThemeMode('auto')}
-                  className={`mp-theme-icon-btn${menuThemeMode === 'auto' ? ' is-active' : ''}`}
-                  aria-label="حسب جهاز الزبون تلقائياً"
-                  title="حسب جهاز الزبون"
-                >
-                  <Monitor size={17} />
-                </button>
-              </div>
-            </div>
-
-            <div style={{ height: '1px', background: 'var(--line)' }} />
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div
-                  style={{
-                    width: '42px',
-                    height: '42px',
-                    borderRadius: '12px',
-                    background: 'var(--soft)',
-                    color: 'var(--brand-ink, #34D399)',
-                    display: 'grid',
-                    placeItems: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  {dashboardThemeMode === 'light' ? (
-                    <Sun size={20} />
-                  ) : dashboardThemeMode === 'auto' ? (
-                    <Monitor size={20} />
-                  ) : (
-                    <Moon size={20} />
-                  )}
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--ink)', margin: '0 0 2px' }}>
-                    مظهر لوحة التحكم
-                  </h3>
-                  <p style={{ fontSize: '12.5px', color: 'var(--muted)', margin: 0 }}>
-                    فاتح أو داكن أو حسب جهازك
-                  </p>
-                </div>
-              </div>
-
-              <div className="mp-theme-icon-switch" role="group" aria-label="مظهر لوحة التحكم">
-                <button
-                  type="button"
-                  onClick={() => void handleSelectDashboardThemeMode('light')}
-                  className={`mp-theme-icon-btn${dashboardThemeMode === 'light' ? ' is-active' : ''}`}
-                  aria-label="الوضع الفاتح"
-                  title="فاتح"
-                >
-                  <Sun size={17} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSelectDashboardThemeMode('dark')}
-                  className={`mp-theme-icon-btn${dashboardThemeMode === 'dark' ? ' is-active' : ''}`}
-                  aria-label="الوضع الداكن"
-                  title="داكن"
-                >
-                  <Moon size={17} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSelectDashboardThemeMode('auto')}
-                  className={`mp-theme-icon-btn${dashboardThemeMode === 'auto' ? ' is-active' : ''}`}
-                  aria-label="حسب جهازك تلقائياً"
-                  title="حسب جهازك"
-                >
-                  <Monitor size={17} />
-                </button>
-              </div>
-            </div>
-            <div className="mp-section-divider" />
-
-            <div>
-              <h3 style={{ fontSize: '15.5px', fontWeight: 900, color: 'var(--ink)', margin: '0 0 10px' }}>
-                التحكم بحالة المنيو وطرق الطلب
-              </h3>
-
-              <div style={{ borderTop: '1px solid var(--line)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '12px 2px', borderBottom: '1px solid var(--line)' }}>
-                  <div>
-                    <b style={{ fontSize: '14px', color: 'var(--ink)', display: 'block' }}>حالة المنيو للزبائن</b>
-                    <span style={{ fontSize: '12px', color: restActive ? '#10b981' : '#ef4444', fontWeight: 700 }}>
-                      {restActive
-                        ? 'مفعّل — يظهر المنيو ويستقبل الزبائن'
-                        : 'متوقف مؤقتاً — يظهر تنبيه إيقاف مؤقت للزوار'}
-                    </span>
+        <AnimatePresence mode="wait">
+          {sectionTab === 'ops' && (
+            <motion.div
+              key="tab-ops"
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={prefersReducedMotion ? undefined : { opacity: 0, y: -6 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+            >
+              {/* Live Menu Status Hero Card */}
+              <div className={`mp-set2-hero ${restActive ? '' : 'is-paused'}`}>
+                <div className="mp-set2-hero-info">
+                  <div className="mp-set2-icon-box">
+                    <Power size={19} />
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={restActive}
-                    onClick={() => setRestActive((v) => !v)}
-                    style={{
-                      width: '50px',
-                      height: '28px',
-                      borderRadius: '999px',
-                      border: 0,
-                      padding: '3px',
-                      cursor: 'pointer',
-                      background: restActive ? '#10b981' : '#94a3b8',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: restActive ? 'flex-start' : 'flex-end',
-                      transition: 'background 0.2s ease',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#ffffff', boxShadow: '0 1px 4px rgba(0,0,0,0.25)' }} />
-                  </button>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px', padding: '12px 0', borderBottom: '1px solid var(--line)' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 4px', cursor: resolvedPlan.perms.deliveryOrders ? 'pointer' : 'not-allowed', opacity: resolvedPlan.perms.deliveryOrders ? 1 : 0.6, fontWeight: 700, fontSize: '13px' }}>
-                    <span>🚚 طلبات التوصيل {!resolvedPlan.perms.deliveryOrders && '🔒'}</span>
-                    <input
-                      type="checkbox"
-                      disabled={!resolvedPlan.perms.deliveryOrders}
-                      checked={resolvedPlan.perms.deliveryOrders && allowDelivery}
-                      onChange={(e) => setAllowDelivery(e.target.checked)}
-                    />
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 4px', cursor: resolvedPlan.perms.pickupOrders ? 'pointer' : 'not-allowed', opacity: resolvedPlan.perms.pickupOrders ? 1 : 0.6, fontWeight: 700, fontSize: '13px' }}>
-                    <span>🏪 الحجز / الاستلام {!resolvedPlan.perms.pickupOrders && '🔒'}</span>
-                    <input
-                      type="checkbox"
-                      disabled={!resolvedPlan.perms.pickupOrders}
-                      checked={resolvedPlan.perms.pickupOrders && allowPickup}
-                      onChange={(e) => setAllowPickup(e.target.checked)}
-                    />
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 4px', cursor: resolvedPlan.perms.tableOrders ? 'pointer' : 'not-allowed', opacity: resolvedPlan.perms.tableOrders ? 1 : 0.6, fontWeight: 700, fontSize: '13px' }}>
-                    <span>
-                      🍽️ طلبات الطاولات
-                      {!resolvedPlan.perms.tableOrders && (
-                        <span style={{ display: 'block', fontSize: '11px', color: '#f59e0b', marginTop: '2px' }}>
-                          🔒 متاح في الباقة الاحترافية فأعلى
-                        </span>
-                      )}
-                    </span>
-                    <input
-                      type="checkbox"
-                      disabled={!resolvedPlan.perms.tableOrders}
-                      checked={resolvedPlan.perms.tableOrders && allowTable}
-                      onChange={(e) => setAllowTable(e.target.checked)}
-                    />
-                  </label>
-                </div>
-
-                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 2px 4px', cursor: 'pointer', fontWeight: 700, fontSize: '13px' }}>
-                  <span>🌙 استقبال الطلبات المسبقة حتى عند إغلاق المطعم خارج ساعات الدوام</span>
-                  <input
-                    type="checkbox"
-                    checked={acceptClosedOrders}
-                    onChange={(e) => setAcceptClosedOrders(e.target.checked)}
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div className="mp-section-divider" />
-
-            <div>
-              <h3 style={{ fontSize: '15.5px', fontWeight: 900, color: 'var(--ink)', margin: '0 0 4px' }}>
-                قناة إرسال واستقبال الطلبات (تيليجرام / واتساب)
-              </h3>
-              <p style={{ fontSize: '12.5px', color: 'var(--muted)', margin: '0 0 12px', lineHeight: 1.6 }}>
-                اختر كيف تصل طلبات الزبائن من المنيو: عبر التليجرام والواتساب معاً، أو عبر التليجرام فقط دون فتح واتساب، أو عبر الواتساب فقط.
-              </p>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
-                {[
-                  {
-                    id: 'both' as const,
-                    title: 'تفعيل الاثنين معاً',
-                    desc: 'إشعار فوري على تيليجرام + تحويل الزبون لتأكيد الطلب عبر واتساب',
-                    accent: '#10b981',
-                    Icon: CheckCircle2,
-                  },
-                  {
-                    id: 'telegram' as const,
-                    title: 'عبر التليجرام فقط',
-                    desc: 'إرسال الطلب مباشرة للوحة التحكم وبوت تيليجرام بدون تحويل لواتساب',
-                    accent: '#0088cc',
-                    Icon: Send,
-                  },
-                  {
-                    id: 'whatsapp' as const,
-                    title: 'عبر الواتساب فقط',
-                    desc: 'إرسال الطلب عبر محادثة واتساب فقط مع إيقاف إشعارات تيليجرام',
-                    accent: '#16a34a',
-                    Icon: MessageCircle,
-                  },
-                ].map((opt) => {
-                  const selected = orderChannel === opt.id;
-                  const OptIcon = opt.Icon;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setOrderChannel(opt.id)}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '15px', fontWeight: 900, color: 'var(--ink)' }}>
+                      {restActive ? 'المنيو مفعّل ويستقبل الطلبات' : 'المنيو متوقف مؤقتاً'}
+                    </div>
+                    <div
                       style={{
-                        textAlign: 'start',
-                        borderRadius: '14px',
-                        padding: '13px 14px',
-                        cursor: 'pointer',
-                        border: selected
-                          ? `2px solid ${opt.accent}`
-                          : '1px solid var(--line)',
-                        background: selected
-                          ? `color-mix(in srgb, ${opt.accent} 10%, var(--surface))`
-                          : 'var(--bg)',
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '10px',
-                        transition: 'all 0.15s ease',
-                        width: '100%',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        color: restActive ? '#10b981' : '#ef4444',
+                        marginTop: '2px',
                       }}
                     >
-                      <div
-                        style={{
-                          width: '36px',
-                          height: '36px',
-                          borderRadius: '10px',
-                          background: selected ? opt.accent : 'var(--soft)',
-                          color: selected ? '#ffffff' : 'var(--muted)',
-                          display: 'grid',
-                          placeItems: 'center',
-                          flexShrink: 0,
-                          marginTop: '2px',
-                        }}
-                      >
-                        <OptIcon size={18} />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--ink)', marginBottom: '3px' }}>
-                          {opt.title}
-                        </div>
-                        <div style={{ fontSize: '11.5px', color: 'var(--muted)', lineHeight: 1.5 }}>
-                          {opt.desc}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
+                      {restActive
+                        ? 'يظهر للزبائن بشكل مباشر'
+                        : 'يظهر إشعار التوقف المؤقت للزوار'}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={restActive}
+                  aria-label="حالة المنيو للزبائن"
+                  onClick={() => setRestActive((v) => !v)}
+                  className={`ios-switch ${restActive ? 'on' : 'off'}`}
+                >
+                  <span className="ios-switch-thumb" />
+                </button>
               </div>
 
-              {orderChannel !== 'whatsapp' && !rest.telegramChatId && (
-                <div
-                  style={{
-                    marginTop: '12px',
-                    padding: '11px 14px',
-                    borderRadius: '12px',
-                    background: 'rgba(245, 158, 11, 0.1)',
-                    border: '1px solid rgba(245, 158, 11, 0.3)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '10px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: 'var(--ink)', fontWeight: 700 }}>
-                    <AlertCircle size={16} style={{ color: '#f59e0b', flexShrink: 0 }} />
-                    <span>لم يتم ربط حساب التليجرام لهذا المتجر بعد — يجب مشاركة رقمك مع البوت لتصل الطلبات.</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn s"
-                    onClick={() => setActiveTab('telegram')}
-                    style={{ fontWeight: 800, fontSize: '12px' }}
-                  >
-                    <Send size={13} />
-                    <span>الذهاب إلى إعداد التليجرام</span>
-                  </button>
-                </div>
-              )}
-
-              {orderChannel !== 'telegram' && !restWa.trim() && !restPhone.trim() && (
-                <div
-                  style={{
-                    marginTop: '10px',
-                    padding: '10px 14px',
-                    borderRadius: '12px',
-                    background: 'rgba(239, 68, 68, 0.08)',
-                    border: '1px solid rgba(239, 68, 68, 0.25)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '8px',
-                    fontSize: '12.5px',
-                    color: '#ef4444',
-                    fontWeight: 700,
-                  }}
-                >
-                  <span>يرجى إدخال رقم الواتساب في القسم الرابع أدناه لاستقبال طلبات الواتساب.</span>
-                  <button
-                    type="button"
-                    className="btn s"
-                    onClick={() => jumpTo('sec-identity')}
-                    style={{ fontSize: '12px' }}
-                  >
-                    إدخال الرقم الآن
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </motion.section>
-
-        {/* SECTION 2: رابط المنيو المخصص باسم حسابك */}
-        <motion.section
-          id="sec-slug"
-          className="mp-set-sec"
-          initial={prefersReducedMotion ? false : { opacity: 0, y: 14 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.06 }}
-          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <div className="mp-set-sec-head">
-            <h2 className="mp-set-sec-title">
-              <span className="mp-set-sec-num">2</span>
-              <span>
-                {subdomainEnabled
-                  ? 'الرابط المخصص والدومين الفرعي باسم مشروعك'
-                  : 'رابط المنيو المخصص باسم حسابك'}
-              </span>
-            </h2>
-          </div>
-
-          <div className="mp-set-card" style={{ gap: '12px' }}>
-            {!resolvedPlan.perms.customSlug ? (
-              <>
-                <div
-                  style={{
-                    paddingBottom: '12px',
-                    borderBottom: '1px solid var(--line)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '10px',
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
-                      رابط منيو مشروعك الحالي (كود تلقائي من 6 خانات):
+              {/* Currency & Themes Compact Panel */}
+              <div className="mp-set2-panel">
+                <div className="mp-set2-list">
+                  {/* Currency */}
+                  <div className="mp-set2-row">
+                    <div className="mp-set2-row-meta">
+                      <div className="mp-set2-mini-ico">
+                        <Coins size={16} />
+                      </div>
+                      <div>
+                        <div className="mp-set2-row-label">العملة</div>
+                        <div className="mp-set2-row-desc">للأسعار والفواتير</div>
+                      </div>
                     </div>
-                    <b dir="ltr" style={{ fontSize: '13.5px', color: 'var(--brand-ink, #34D399)', wordBreak: 'break-all' }}>
-                      {liveMenuUrl}
-                    </b>
-                  </div>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    <button type="button" className="btn s" onClick={openShareModal}>
-                      <Share2 size={13} />
-                      <span>مشاركة المنيو</span>
-                    </button>
-                    <button type="button" className="btn s" onClick={() => copyLink(liveMenuUrl)}>
-                      <Copy size={13} />
-                      <span>نسخ الرابط</span>
-                    </button>
-                    <button type="button" className="btn s" onClick={() => onNavigate(publicPath)}>
-                      <ExternalLink size={13} />
-                      <span>معاينة المنيو</span>
-                    </button>
-                  </div>
-                </div>
 
-                <div
-                  style={{
-                    background: 'rgba(245, 158, 11, 0.08)',
-                    border: 0,
-                    borderRadius: '14px',
-                    padding: '14px 16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '12px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 240px' }}>
-                    <Lock size={20} style={{ color: '#f59e0b', flexShrink: 0 }} />
-                    <div>
-                      <b style={{ fontSize: '13.5px', color: 'var(--ink)', display: 'block' }}>
-                        اختيار اسم حساب مخصص للرابط (<span dir="ltr">{baseDomain}/user</span>) متاح للباقات المدفوعة فقط
-                      </b>
-                      <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                        قم بتفعيل أو ترقية باقتك إلى{' '}
-                        <b>الباقة الاقتصادية</b>{' '}
-                        أو أعلى لتخصيص رابط مباشر باسم مشروعك.
-                      </span>
+                    <select
+                      aria-label="اختيار العملة"
+                      value={restCurrency}
+                      onChange={(e) => handleCurrencyChange(e.target.value)}
+                      className="mp-set2-currency-select"
+                      style={themedInputStyle}
+                    >
+                      <option value="د.ع">د.ع — دينار عراقي</option>
+                      <option value="$">$ — دولار أمريكي</option>
+                      <option value="ر.س">ر.س — ريال سعودي</option>
+                      <option value="د.إ">د.إ — درهم إماراتي</option>
+                      <option value="د.ك">د.ك — دينار كويتي</option>
+                      <option value="د.أ">د.أ — دينار أردني</option>
+                      <option value="ر.ق">ر.ق — ريال قطري</option>
+                      <option value="د.ب">د.ب — دينار بحريني</option>
+                      <option value="ر.ع">ر.ع — ريال عماني</option>
+                      <option value="ج.م">ج.م — جنيه مصري</option>
+                      <option value="ل.ل">ل.ل — ليرة لبنانية</option>
+                      <option value="€">€ — يورو</option>
+                    </select>
+                  </div>
+
+                  {/* Menu Theme Mode */}
+                  <div className="mp-set2-row">
+                    <div className="mp-set2-row-meta">
+                      <div className="mp-set2-mini-ico">
+                        {menuThemeMode === 'light' ? (
+                          <Sun size={16} />
+                        ) : menuThemeMode === 'auto' ? (
+                          <Monitor size={16} />
+                        ) : (
+                          <Moon size={16} />
+                        )}
+                      </div>
+                      <div>
+                        <div className="mp-set2-row-label">مظهر المنيو</div>
+                        <div className="mp-set2-row-desc">فاتح أو غامق للزبون</div>
+                      </div>
+                    </div>
+
+                    <div className="mp-theme-icon-switch" role="group" aria-label="مظهر المنيو">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectThemeMode('light')}
+                        className={`mp-theme-icon-btn${menuThemeMode === 'light' ? ' is-active' : ''}`}
+                        aria-label="الوضع الفاتح"
+                        title="فاتح"
+                      >
+                        <Sun size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectThemeMode('dark')}
+                        className={`mp-theme-icon-btn${menuThemeMode === 'dark' ? ' is-active' : ''}`}
+                        aria-label="الوضع الغامق"
+                        title="غامق"
+                      >
+                        <Moon size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectThemeMode('auto')}
+                        className={`mp-theme-icon-btn${menuThemeMode === 'auto' ? ' is-active' : ''}`}
+                        aria-label="تلقائي حسب جهاز الزبون"
+                        title="تلقائي"
+                      >
+                        <Monitor size={16} />
+                      </button>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => openUpgradeModal('starter')}
-                    className="btn p s"
-                    style={{ fontWeight: 800 }}
-                  >
-                    ترقية الباقة الآن
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p style={{ margin: 0, fontSize: '13px', color: 'var(--muted)', lineHeight: 1.6 }}>
-                  اختر اسم حساب إنجليزياً فريداً غير مكرر لمشروعك ليُحفظ ويُفعّل فوراً{' '}
-                  (<code dir="ltr">{baseDomain}/user</code>):
-                </p>
 
-                <div style={{ display: 'flex', alignItems: 'stretch', gap: '8px', flexWrap: 'wrap' }}>
-                  <div
-                    dir="ltr"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      flex: '1 1 240px',
-                      background: 'color-mix(in srgb, var(--surface) 40%, transparent)',
-                      backdropFilter: 'blur(12px) saturate(1.2)',
-                      WebkitBackdropFilter: 'blur(12px) saturate(1.2)',
-                      border: '1.5px solid rgba(52, 211, 153, 0.34)',
-                      borderRadius: '12px',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    {!subdomainEnabled && (
-                      <span
-                        style={{
-                          padding: '0 12px',
-                          fontSize: '12.5px',
-                          fontWeight: 800,
-                          color: 'var(--brand-ink, #34D399)',
-                          borderInlineEnd: '1px solid var(--line)',
-                          whiteSpace: 'nowrap',
-                        }}
+                  {/* Dashboard Theme Mode */}
+                  <div className="mp-set2-row">
+                    <div className="mp-set2-row-meta">
+                      <div className="mp-set2-mini-ico">
+                        {dashboardThemeMode === 'light' ? (
+                          <Sun size={16} />
+                        ) : dashboardThemeMode === 'auto' ? (
+                          <Monitor size={16} />
+                        ) : (
+                          <Moon size={16} />
+                        )}
+                      </div>
+                      <div>
+                        <div className="mp-set2-row-label">مظهر اللوحة</div>
+                        <div className="mp-set2-row-desc">مظهر لوحة التحكم</div>
+                      </div>
+                    </div>
+
+                    <div className="mp-theme-icon-switch" role="group" aria-label="مظهر لوحة التحكم">
+                      <button
+                        type="button"
+                        onClick={() => void handleSelectDashboardThemeMode('light')}
+                        className={`mp-theme-icon-btn${dashboardThemeMode === 'light' ? ' is-active' : ''}`}
+                        aria-label="الوضع الفاتح"
+                        title="فاتح"
                       >
-                        https://{baseDomain}/
-                      </span>
-                    )}
-                    <input
-                      type="text"
-                      dir="ltr"
-                      value={restSlug}
-                      onChange={(e) => setRestSlug(sanitizeSlug(e.target.value))}
-                      placeholder="your-restaurant"
-                      style={{
-                        border: 0,
-                        background: 'transparent',
-                        outline: 'none',
-                        padding: '10px 12px',
-                        fontSize: '14px',
-                        fontWeight: 700,
-                        color: 'var(--ink)',
-                        flex: 1,
-                        minHeight: '42px',
-                      }}
-                    />
-                    {subdomainEnabled && (
-                      <span
-                        style={{
-                          padding: '0 12px',
-                          fontSize: '12.5px',
-                          fontWeight: 800,
-                          color: 'var(--brand-ink, #34D399)',
-                          borderInlineStart: '1px solid var(--line)',
-                          whiteSpace: 'nowrap',
-                        }}
+                        <Sun size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSelectDashboardThemeMode('dark')}
+                        className={`mp-theme-icon-btn${dashboardThemeMode === 'dark' ? ' is-active' : ''}`}
+                        aria-label="الوضع الداكن"
+                        title="داكن"
                       >
-                        .{baseDomain}
-                      </span>
+                        <Moon size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSelectDashboardThemeMode('auto')}
+                        className={`mp-theme-icon-btn${dashboardThemeMode === 'auto' ? ' is-active' : ''}`}
+                        aria-label="تلقائي حسب جهازك"
+                        title="تلقائي"
+                      >
+                        <Monitor size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Order Types Panel */}
+              <div className="mp-set2-panel">
+                <div className="mp-set2-panel-head">
+                  <h2 className="mp-set2-panel-title">طرق استلام الطلبات</h2>
+                </div>
+
+                <div className="mp-set2-list">
+                  {/* Delivery */}
+                  <div className="mp-set2-row">
+                    <div className="mp-set2-row-meta">
+                      <div className="mp-set2-mini-ico">
+                        <Truck size={16} />
+                      </div>
+                      <div>
+                        <div className="mp-set2-row-label">طلبات التوصيل</div>
+                        {!resolvedPlan.perms.deliveryOrders && (
+                          <div className="mp-set2-row-desc" style={{ color: '#f59e0b', fontWeight: 700 }}>
+                            مقفل في باقتك الحالية
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {!resolvedPlan.perms.deliveryOrders ? (
+                      <button
+                        type="button"
+                        className="btn s"
+                        onClick={() => openUpgradeModal('starter')}
+                        style={{ color: '#f59e0b', fontSize: '12px', fontWeight: 800 }}
+                      >
+                        <Lock size={13} />
+                        <span>ترقية</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={allowDelivery}
+                        aria-label="تفعيل طلبات التوصيل"
+                        onClick={() => setAllowDelivery((v) => !v)}
+                        className={`ios-switch sm ${allowDelivery ? 'on' : 'off'}`}
+                      >
+                        <span className="ios-switch-thumb" />
+                      </button>
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    className="btn s"
-                    disabled={slugCheckState.checking || !restSlug}
-                    onClick={() => void checkSubdomainAvailability(restSlug)}
-                    style={{ fontWeight: 800, minHeight: '44px' }}
-                  >
-                    <ShieldCheck size={15} />
-                    <span>{slugCheckState.checking ? 'جاري الفحص...' : 'فحص التوفر'}</span>
-                  </button>
+                  {/* Pickup */}
+                  <div className="mp-set2-row">
+                    <div className="mp-set2-row-meta">
+                      <div className="mp-set2-mini-ico">
+                        <Store size={16} />
+                      </div>
+                      <div>
+                        <div className="mp-set2-row-label">الحجز / الاستلام</div>
+                        {!resolvedPlan.perms.pickupOrders && (
+                          <div className="mp-set2-row-desc" style={{ color: '#f59e0b', fontWeight: 700 }}>
+                            مقفل في باقتك الحالية
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {!resolvedPlan.perms.pickupOrders ? (
+                      <button
+                        type="button"
+                        className="btn s"
+                        onClick={() => openUpgradeModal('starter')}
+                        style={{ color: '#f59e0b', fontSize: '12px', fontWeight: 800 }}
+                      >
+                        <Lock size={13} />
+                        <span>ترقية</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={allowPickup}
+                        aria-label="تفعيل الحجز والاستلام"
+                        onClick={() => setAllowPickup((v) => !v)}
+                        className={`ios-switch sm ${allowPickup ? 'on' : 'off'}`}
+                      >
+                        <span className="ios-switch-thumb" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Table */}
+                  <div className="mp-set2-row">
+                    <div className="mp-set2-row-meta">
+                      <div className="mp-set2-mini-ico">
+                        <UtensilsCrossed size={16} />
+                      </div>
+                      <div>
+                        <div className="mp-set2-row-label">طلبات الطاولات</div>
+                        {!resolvedPlan.perms.tableOrders && (
+                          <div className="mp-set2-row-desc" style={{ color: '#f59e0b', fontWeight: 700 }}>
+                            متاح في الباقة الاحترافية فأعلى
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {!resolvedPlan.perms.tableOrders ? (
+                      <button
+                        type="button"
+                        className="btn s"
+                        onClick={() => openUpgradeModal('pro')}
+                        style={{ color: '#f59e0b', fontSize: '12px', fontWeight: 800 }}
+                      >
+                        <Lock size={13} />
+                        <span>ترقية</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={allowTable}
+                        aria-label="تفعيل طلبات الطاولات"
+                        onClick={() => setAllowTable((v) => !v)}
+                        className={`ios-switch sm ${allowTable ? 'on' : 'off'}`}
+                      >
+                        <span className="ios-switch-thumb" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Pre-orders when closed */}
+                  <div className="mp-set2-row">
+                    <div className="mp-set2-row-meta">
+                      <div className="mp-set2-mini-ico">
+                        <Moon size={16} />
+                      </div>
+                      <div>
+                        <div className="mp-set2-row-label">استقبال الطلبات خارج الدوام</div>
+                        <div className="mp-set2-row-desc">السماح بالطلبات المسبقة عند الإغلاق</div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={acceptClosedOrders}
+                      aria-label="استقبال الطلبات خارج الدوام"
+                      onClick={() => setAcceptClosedOrders((v) => !v)}
+                      className={`ios-switch sm ${acceptClosedOrders ? 'on' : 'off'}`}
+                    >
+                      <span className="ios-switch-thumb" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Order Receiving Channel */}
+              <div className="mp-set2-panel">
+                <div className="mp-set2-panel-head">
+                  <div>
+                    <h2 className="mp-set2-panel-title">قناة وصول الطلبات</h2>
+                    <p className="mp-set2-panel-sub">حدد أين تصلك طلبات الزبائن مباشرة من المنيو</p>
+                  </div>
                 </div>
 
-                {slugCheckState.message && (
-                  <div
-                    style={{
-                      fontSize: '12.5px',
-                      fontWeight: 800,
-                      color: slugCheckState.available ? '#10b981' : '#ef4444',
-                    }}
-                  >
-                    {slugCheckState.message}
-                  </div>
-                )}
+                <div className="mp-set2-channels-grid">
+                  {[
+                    {
+                      id: 'both' as const,
+                      title: 'الاثنين معاً',
+                      desc: 'إشعار تيليجرام + تحويل لواتساب',
+                      accent: '#10b981',
+                      Icon: CheckCircle2,
+                    },
+                    {
+                      id: 'telegram' as const,
+                      title: 'تيليجرام فقط',
+                      desc: 'للّوحة وبوت تيليجرام بدون واتساب',
+                      accent: '#0088cc',
+                      Icon: Send,
+                    },
+                    {
+                      id: 'whatsapp' as const,
+                      title: 'واتساب فقط',
+                      desc: 'محادثة واتساب مع إيقاف البوت',
+                      accent: '#16a34a',
+                      Icon: MessageCircle,
+                    },
+                  ].map((opt) => {
+                    const selected = orderChannel === opt.id;
+                    const OptIcon = opt.Icon;
+                    return (
+                      <motion.button
+                        key={opt.id}
+                        type="button"
+                        whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
+                        onClick={() => setOrderChannel(opt.id)}
+                        className={`mp-set2-channel-card ${selected ? 'is-selected' : ''}`}
+                        style={{
+                          borderColor: selected ? opt.accent : undefined,
+                          background: selected
+                            ? `color-mix(in srgb, ${opt.accent} 11%, var(--surface))`
+                            : undefined,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '10px',
+                            background: selected ? opt.accent : 'var(--soft)',
+                            color: selected ? '#ffffff' : 'var(--muted)',
+                            display: 'grid',
+                            placeItems: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <OptIcon size={17} />
+                        </span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontWeight: 900, fontSize: '13.5px', color: 'var(--ink)' }}>
+                            {opt.title}
+                          </span>
+                          <span style={{ display: 'block', fontSize: '11.5px', color: 'var(--muted)', marginTop: '2px', lineHeight: 1.45 }}>
+                            {opt.desc}
+                          </span>
+                        </span>
+                      </motion.button>
+                    );
+                  })}
+                </div>
 
-                <div
-                  style={{
-                    paddingTop: '12px',
-                    borderTop: '1px solid var(--line)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '10px',
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '11.5px', color: 'var(--muted)' }}>
-                      الرابط المباشر الحالي:
+                {missingTelegram && (
+                  <div className="mp-set2-alert warn">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 200px' }}>
+                      <AlertCircle size={16} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                      <span>لم يتم ربط التليجرام بعد — شارك رقمك مع البوت لاستقبال الطلبات.</span>
                     </div>
-                    <b dir="ltr" style={{ fontSize: '13px', color: 'var(--brand-ink, #34D399)', wordBreak: 'break-all' }}>
-                      {restSlug ? `https://${previewSubdomainHost}` : liveMenuUrl}
-                    </b>
-                  </div>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    <button type="button" className="btn s" onClick={openShareModal}>
-                      <Share2 size={13} />
-                      <span>مشاركة المنيو</span>
-                    </button>
                     <button
                       type="button"
                       className="btn s"
-                      onClick={() => copyLink(restSlug ? `https://${previewSubdomainHost}` : liveMenuUrl)}
+                      onClick={() => setActiveTab('telegram')}
+                      style={{ fontWeight: 800, fontSize: '12px' }}
                     >
-                      <Copy size={13} />
-                      <span>نسخ</span>
+                      <Send size={13} />
+                      <span>إعداد التليجرام</span>
                     </button>
-                    {fullSubdomainUrl ? (
-                      <a
-                        href={fullSubdomainUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn s"
-                        style={{ textDecoration: 'none' }}
-                      >
-                        <ExternalLink size={13} />
-                        <span>فتح الدومين</span>
-                      </a>
-                    ) : (
-                      <button
-                        type="button"
-                        className="btn s"
-                        onClick={() => onNavigate(publicPath)}
-                      >
-                        <ExternalLink size={13} />
-                        <span>معاينة المنيو</span>
-                      </button>
-                    )}
                   </div>
-                </div>
-              </>
-            )}
-          </div>
-        </motion.section>
+                )}
 
-        {/* SECTION 3: شعار المنيو وصورة الغلاف */}
-        <motion.section
-          id="sec-media"
-          className="mp-set-sec"
-          initial={prefersReducedMotion ? false : { opacity: 0, y: 14 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.06 }}
-          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <div className="mp-set-sec-head">
-            <h2 className="mp-set-sec-title">
-              <span className="mp-set-sec-num">3</span>
-              <span>شعار المشروع وصورة البانر (الغلاف)</span>
-            </h2>
-          </div>
-
-          <div className="mp-set-card">
-            <p style={{ fontSize: '12.5px', color: 'var(--muted)', margin: 0 }}>
-              تظهر صورة الشعار والغلاف مباشرة أعلى المنيو الإلكتروني أمام الزبائن.
-            </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px' }}>
-              {/* Logo */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--ink)' }}>شعار المشروع (Logo)</span>
-                  <span style={{ fontSize: '11.5px', color: 'var(--muted)', fontWeight: 600 }}>مربع 1:1</span>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div
-                    style={{
-                      width: '78px',
-                      height: '78px',
-                      borderRadius: '50%',
-                      border: '2px solid var(--line)',
-                      background: 'color-mix(in srgb, var(--surface) 40%, transparent)',
-                      overflow: 'hidden',
-                      display: 'grid',
-                      placeItems: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {logoUrlInput ? (
-                      <img src={logoUrlInput} alt="شعار المنيو" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <ImageIcon size={24} style={{ color: 'var(--muted)' }} />
-                    )}
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, minWidth: 0 }}>
+                {missingWhatsapp && (
+                  <div className="mp-set2-alert danger">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 200px' }}>
+                      <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                      <span>يرجى إدخال رقم الواتساب في تبويب «الهوية» لاستقبال الطلبات.</span>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setMediaPickerTarget('logo')}
+                      className="btn s"
+                      onClick={goToWhatsAppInput}
+                      style={{ fontSize: '12px', fontWeight: 800 }}
+                    >
+                      إدخال الرقم الآن
+                    </button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {sectionTab === 'brand' && (
+            <motion.div
+              key="tab-brand"
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={prefersReducedMotion ? undefined : { opacity: 0, y: -6 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+            >
+              {/* Custom Link / Subdomain */}
+              <div className="mp-set2-panel">
+                <div className="mp-set2-panel-head">
+                  <div>
+                    <h2 className="mp-set2-panel-title">
+                      <Globe size={16} style={{ color: 'var(--brand-ink, #34D399)' }} />
+                      <span>{subdomainEnabled ? 'الدومين الفرعي والرابط المخصص' : 'رابط المنيو المخصص'}</span>
+                    </h2>
+                    <p className="mp-set2-panel-sub">
+                      {!resolvedPlan.perms.customSlug
+                        ? 'رابط منيو مشروعك الحالي بالكود التلقائي'
+                        : `اختر اسماً إنجليزياً فريداً لمشروعك (${baseDomain}/user)`}
+                    </p>
+                  </div>
+                </div>
+
+                {!resolvedPlan.perms.customSlug ? (
+                  <>
+                    <div
                       style={{
-                        display: 'inline-flex',
+                        padding: '12px',
+                        borderRadius: '13px',
+                        background: 'color-mix(in srgb, var(--bg) 52%, transparent)',
+                        border: '1px solid var(--line)',
+                        display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        padding: '9px 14px',
-                        borderRadius: '10px',
-                        border: 'none',
-                        background: 'var(--brand)',
-                        color: 'var(--on-brand)',
-                        fontSize: '12.5px',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        width: 'fit-content',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '10px',
                       }}
                     >
-                      <ImageIcon size={14} />
-                      <span>اختيار من مكتبة الصور</span>
-                    </button>
+                      <b dir="ltr" style={{ fontSize: '13.5px', color: 'var(--brand-ink, #34D399)', wordBreak: 'break-all' }}>
+                        {liveMenuUrl}
+                      </b>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <button type="button" className="btn s" onClick={openShareModal}>
+                          <Share2 size={13} />
+                          <span>مشاركة</span>
+                        </button>
+                        <button type="button" className="btn s" onClick={() => copyLink(liveMenuUrl)}>
+                          <Copy size={13} />
+                          <span>نسخ</span>
+                        </button>
+                        <button type="button" className="btn s" onClick={() => onNavigate(publicPath)}>
+                          <ExternalLink size={13} />
+                          <span>معاينة</span>
+                        </button>
+                      </div>
+                    </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <div className="mp-set2-alert warn">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 220px' }}>
+                        <Lock size={18} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--ink)' }}>
+                            تخصيص الرابط باسم مشروعك متاح في الباقات المدفوعة
+                          </div>
+                          <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '2px' }}>
+                            قم بالترقية إلى الباقة الاقتصادية أو أعلى لتفعيل رابط مخصص.
+                          </div>
+                        </div>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => setShowLogoUrlField((v) => !v)}
+                        onClick={() => openUpgradeModal('starter')}
+                        className="btn p s"
+                        style={{ fontWeight: 800 }}
+                      >
+                        ترقية الباقة
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'stretch', gap: '8px', flexWrap: 'wrap' }}>
+                      <div
+                        dir="ltr"
                         style={{
-                          background: 'color-mix(in srgb, var(--surface) 40%, transparent)',
-                          border: '1px solid var(--line)',
-                          color: 'var(--ink)',
-                          borderRadius: '8px',
-                          padding: '5px 10px',
-                          fontSize: '11.5px',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
+                          display: 'flex',
                           alignItems: 'center',
-                          gap: '4px',
+                          flex: '1 1 230px',
+                          background: 'color-mix(in srgb, var(--bg) 52%, transparent)',
+                          border: '1.5px solid color-mix(in srgb, var(--brand) 38%, var(--line))',
+                          borderRadius: '12px',
+                          overflow: 'hidden',
                         }}
                       >
-                        <Link2 size={12} />
-                        <span>{showLogoUrlField ? 'إخفاء الرابط' : 'إدخال رابط'}</span>
+                        {!subdomainEnabled && (
+                          <span
+                            style={{
+                              padding: '0 10px',
+                              fontSize: '12px',
+                              fontWeight: 800,
+                              color: 'var(--brand-ink, #34D399)',
+                              borderInlineEnd: '1px solid var(--line)',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            https://{baseDomain}/
+                          </span>
+                        )}
+                        <input
+                          type="text"
+                          dir="ltr"
+                          value={restSlug}
+                          onChange={(e) => setRestSlug(sanitizeSlug(e.target.value))}
+                          placeholder="your-restaurant"
+                          style={{
+                            border: 0,
+                            background: 'transparent',
+                            outline: 'none',
+                            padding: '10px 12px',
+                            fontSize: '14px',
+                            fontWeight: 700,
+                            color: 'var(--ink)',
+                            flex: 1,
+                            minHeight: '42px',
+                            minWidth: 0,
+                          }}
+                        />
+                        {subdomainEnabled && (
+                          <span
+                            style={{
+                              padding: '0 10px',
+                              fontSize: '12px',
+                              fontWeight: 800,
+                              color: 'var(--brand-ink, #34D399)',
+                              borderInlineStart: '1px solid var(--line)',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            .{baseDomain}
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn s"
+                        disabled={slugCheckState.checking || !restSlug}
+                        onClick={() => void checkSubdomainAvailability(restSlug)}
+                        style={{ fontWeight: 800, minHeight: '42px' }}
+                      >
+                        <ShieldCheck size={15} />
+                        <span>{slugCheckState.checking ? 'جاري الفحص...' : 'فحص التوفر'}</span>
                       </button>
-                      {logoUrlInput && (
+                    </div>
+
+                    {slugCheckState.message && (
+                      <div
+                        style={{
+                          fontSize: '12.5px',
+                          fontWeight: 800,
+                          color: slugCheckState.available ? '#10b981' : '#ef4444',
+                        }}
+                      >
+                        {slugCheckState.message}
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        paddingTop: '12px',
+                        borderTop: '1px solid color-mix(in srgb, var(--line) 65%, transparent)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '10px',
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '11.5px', color: 'var(--muted)' }}>الرابط المباشر:</div>
+                        <b dir="ltr" style={{ fontSize: '13px', color: 'var(--brand-ink, #34D399)', wordBreak: 'break-all' }}>
+                          {restSlug ? `https://${previewSubdomainHost}` : liveMenuUrl}
+                        </b>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <button type="button" className="btn s" onClick={openShareModal}>
+                          <Share2 size={13} />
+                          <span>مشاركة</span>
+                        </button>
                         <button
                           type="button"
-                          onClick={() => setLogoUrlInput('')}
+                          className="btn s"
+                          onClick={() => copyLink(restSlug ? `https://${previewSubdomainHost}` : liveMenuUrl)}
+                        >
+                          <Copy size={13} />
+                          <span>نسخ</span>
+                        </button>
+                        {fullSubdomainUrl ? (
+                          <a
+                            href={fullSubdomainUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn s"
+                            style={{ textDecoration: 'none' }}
+                          >
+                            <ExternalLink size={13} />
+                            <span>فتح</span>
+                          </a>
+                        ) : (
+                          <button type="button" className="btn s" onClick={() => onNavigate(publicPath)}>
+                            <ExternalLink size={13} />
+                            <span>معاينة</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Logo & Cover Media */}
+              <div className="mp-set2-panel">
+                <div className="mp-set2-panel-head">
+                  <div>
+                    <h2 className="mp-set2-panel-title">
+                      <ImageIcon size={16} style={{ color: 'var(--brand-ink, #34D399)' }} />
+                      <span>الشعار وصورة الغلاف</span>
+                    </h2>
+                    <p className="mp-set2-panel-sub">تظهر أعلى المنيو الإلكتروني أمام الزبائن</p>
+                  </div>
+                </div>
+
+                <div className="mp-set2-grid-2" style={{ gap: '18px' }}>
+                  {/* Logo */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--ink)' }}>الشعار (Logo)</span>
+                      <span style={{ fontSize: '11.5px', color: 'var(--muted)', fontWeight: 600 }}>مربع 1:1</span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div
+                        style={{
+                          width: '74px',
+                          height: '74px',
+                          borderRadius: '50%',
+                          border: '2px solid var(--line)',
+                          background: 'color-mix(in srgb, var(--bg) 52%, transparent)',
+                          overflow: 'hidden',
+                          display: 'grid',
+                          placeItems: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {logoUrlInput ? (
+                          <img
+                            src={logoUrlInput}
+                            alt="شعار المنيو"
+                            referrerPolicy="no-referrer"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <ImageIcon size={22} style={{ color: 'var(--muted)' }} />
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', flex: 1, minWidth: 0 }}>
+                        <button
+                          type="button"
+                          onClick={() => setMediaPickerTarget('logo')}
+                          className="btn p s"
+                          style={{ width: 'fit-content', fontWeight: 800 }}
+                        >
+                          <ImageIcon size={14} />
+                          <span>مكتبة الصور</span>
+                        </button>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            className="btn s"
+                            onClick={() => setShowLogoUrlField((v) => !v)}
+                            style={{ minHeight: '30px', padding: '4px 9px', fontSize: '11.5px' }}
+                          >
+                            <Link2 size={12} />
+                            <span>{showLogoUrlField ? 'إخفاء الرابط' : 'رابط مباشر'}</span>
+                          </button>
+                          {logoUrlInput && (
+                            <button
+                              type="button"
+                              onClick={() => setLogoUrlInput('')}
+                              style={{
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '1px solid rgba(239, 68, 68, 0.25)',
+                                color: '#ef4444',
+                                borderRadius: '8px',
+                                padding: '5px 9px',
+                                fontSize: '11.5px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              إزالة
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {showLogoUrlField && (
+                      <input
+                        type="text"
+                        dir="ltr"
+                        value={logoUrlInput}
+                        onChange={(e) => setLogoUrlInput(e.target.value)}
+                        placeholder="https://example.com/logo.png"
+                        style={{ ...themedInputStyle, textAlign: 'left', fontSize: '12.5px' }}
+                      />
+                    )}
+                  </div>
+
+                  {/* Cover Banner */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--ink)' }}>الغلاف (Banner)</span>
+                      <span style={{ fontSize: '11.5px', color: 'var(--muted)', fontWeight: 600 }}>عريض 16:9</span>
+                    </div>
+
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '92px',
+                        borderRadius: '12px',
+                        border: '1px solid color-mix(in srgb, var(--line) 70%, transparent)',
+                        background: 'color-mix(in srgb, var(--bg) 52%, transparent)',
+                        overflow: 'hidden',
+                        display: 'grid',
+                        placeItems: 'center',
+                      }}
+                    >
+                      {coverUrlInput ? (
+                        <img
+                          src={coverUrlInput}
+                          alt="بانر المنيو"
+                          referrerPolicy="no-referrer"
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: 'var(--muted)' }}>
+                          <ImageIcon size={20} />
+                          <span style={{ fontSize: '11.5px' }}>لم يتم اختيار صورة غلاف</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => setMediaPickerTarget('cover')}
+                        className="btn p s"
+                        style={{ fontWeight: 800 }}
+                      >
+                        <ImageIcon size={14} />
+                        <span>مكتبة الصور</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn s"
+                        onClick={() => setShowBannerUrlField((v) => !v)}
+                        style={{ minHeight: '34px', padding: '5px 10px', fontSize: '11.5px' }}
+                      >
+                        <Link2 size={12} />
+                        <span>{showBannerUrlField ? 'إخفاء الرابط' : 'رابط مباشر'}</span>
+                      </button>
+                      {coverUrlInput && (
+                        <button
+                          type="button"
+                          onClick={() => setCoverUrlInput('')}
                           style={{
                             background: 'rgba(239, 68, 68, 0.1)',
                             border: '1px solid rgba(239, 68, 68, 0.25)',
                             color: '#ef4444',
                             borderRadius: '8px',
-                            padding: '5px 10px',
+                            padding: '6px 10px',
                             fontSize: '11.5px',
                             fontWeight: 700,
                             cursor: 'pointer',
@@ -990,736 +1044,642 @@ export const SettingsPage: React.FC = () => {
                         </button>
                       )}
                     </div>
+
+                    {showBannerUrlField && (
+                      <input
+                        type="text"
+                        dir="ltr"
+                        value={coverUrlInput}
+                        onChange={(e) => setCoverUrlInput(e.target.value)}
+                        placeholder="https://example.com/banner.jpg"
+                        style={{ ...themedInputStyle, textAlign: 'left', fontSize: '12.5px' }}
+                      />
+                    )}
                   </div>
                 </div>
-
-                {showLogoUrlField && (
-                  <input
-                    type="text"
-                    dir="ltr"
-                    value={logoUrlInput}
-                    onChange={(e) => setLogoUrlInput(e.target.value)}
-                    placeholder="https://example.com/logo.png"
-                    style={{ ...themedInputStyle, textAlign: 'left', fontSize: '12.5px' }}
-                  />
-                )}
               </div>
+            </motion.div>
+          )}
 
-              {/* Banner */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--ink)' }}>صورة الغلاف (Banner)</span>
-                  <span style={{ fontSize: '11.5px', color: 'var(--muted)', fontWeight: 600 }}>عريض 16:9</span>
+          {sectionTab === 'identity' && (
+            <motion.div
+              key="tab-identity"
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={prefersReducedMotion ? undefined : { opacity: 0, y: -6 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+            >
+              {/* Business Type & Core Info */}
+              <div className="mp-set2-panel">
+                <div className="mp-set2-panel-head">
+                  <h2 className="mp-set2-panel-title">نوع النشاط وبيانات المشروع</h2>
                 </div>
 
-                <div
-                  style={{
-                    width: '100%',
-                    height: '94px',
-                    borderRadius: '12px',
-                    border: 0,
-                    background: 'color-mix(in srgb, var(--surface) 40%, transparent)',
-                    overflow: 'hidden',
-                    display: 'grid',
-                    placeItems: 'center',
-                  }}
-                >
-                  {coverUrlInput ? (
-                    <img src={coverUrlInput} alt="بانر المنيو" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: 'var(--muted)' }}>
-                      <ImageIcon size={22} />
-                      <span style={{ fontSize: '11.5px' }}>لم يتم اختيار صورة غلاف</span>
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <div className="mp-set2-type-grid">
                   <button
                     type="button"
-                    onClick={() => setMediaPickerTarget('cover')}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '8px 14px',
-                      borderRadius: '10px',
-                      border: 'none',
-                      background: 'var(--brand)',
-                      color: 'var(--on-brand)',
-                      fontSize: '12.5px',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                    }}
+                    onClick={() => setRestProjectType('restaurant')}
+                    className={`mp-set2-type-card ${restProjectType === 'restaurant' ? 'is-selected' : ''}`}
                   >
-                    <ImageIcon size={14} />
-                    <span>اختيار من مكتبة الصور</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowBannerUrlField((v) => !v)}
-                    style={{
-                      background: 'color-mix(in srgb, var(--surface) 40%, transparent)',
-                      border: '1px solid var(--line)',
-                      color: 'var(--ink)',
-                      borderRadius: '8px',
-                      padding: '6px 10px',
-                      fontSize: '11.5px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <Link2 size={12} />
-                    <span>{showBannerUrlField ? 'إخفاء الرابط' : 'إدخال رابط'}</span>
-                  </button>
-                  {coverUrlInput && (
-                    <button
-                      type="button"
-                      onClick={() => setCoverUrlInput('')}
+                    <span
                       style={{
-                        background: 'rgba(239, 68, 68, 0.1)',
-                        border: '1px solid rgba(239, 68, 68, 0.25)',
-                        color: '#ef4444',
-                        borderRadius: '8px',
-                        padding: '6px 10px',
-                        fontSize: '11.5px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '11px',
+                        background: '#059669',
+                        color: '#ffffff',
+                        display: 'grid',
+                        placeItems: 'center',
+                        flexShrink: 0,
                       }}
                     >
-                      إزالة
-                    </button>
-                  )}
-                </div>
+                      <UtensilsCrossed size={18} />
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontWeight: 800, fontSize: '13px', color: 'var(--ink)' }}>
+                        مطعم أو مقهى
+                      </span>
+                      <span style={{ display: 'block', fontSize: '11px', color: 'var(--muted)', marginTop: '1px' }}>
+                        أطعمة وكافيه
+                      </span>
+                    </span>
+                    {restProjectType === 'restaurant' && <CheckCircle2 size={16} color="#10b981" style={{ flexShrink: 0 }} />}
+                  </button>
 
-                {showBannerUrlField && (
-                  <input
-                    type="text"
-                    dir="ltr"
-                    value={coverUrlInput}
-                    onChange={(e) => setCoverUrlInput(e.target.value)}
-                    placeholder="https://example.com/banner.jpg"
-                    style={{ ...themedInputStyle, textAlign: 'left', fontSize: '12.5px' }}
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-        </motion.section>
-
-        {/* SECTION 4: هوية المشروع، نبذة عن المشروع، والتواصل */}
-        <motion.section
-          id="sec-identity"
-          className="mp-set-sec"
-          initial={prefersReducedMotion ? false : { opacity: 0, y: 14 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.06 }}
-          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <div className="mp-set-sec-head">
-            <h2 className="mp-set-sec-title">
-              <span className="mp-set-sec-num">4</span>
-              <span>هوية المشروع، النبذة، والتواصل</span>
-            </h2>
-          </div>
-
-          <div className="mp-set-card" style={{ gap: '18px' }}>
-          <div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '13.5px', fontWeight: 800, marginBottom: '8px', color: 'var(--ink)' }}>
-                نوع النشاط التجاري (لتخصيص المصطلحات وسلة الطلبات)
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
-                <div
-                  onClick={() => setRestProjectType('restaurant')}
-                  style={{
-                    border: restProjectType === 'restaurant' ? '2px solid #10b981' : '1px solid var(--line)',
-                    background: restProjectType === 'restaurant' ? 'rgba(16, 185, 129, 0.14)' : 'color-mix(in srgb, var(--surface) 40%, transparent)',
-                    backdropFilter: 'blur(14px) saturate(1.25)',
-                    WebkitBackdropFilter: 'blur(14px) saturate(1.25)',
-                    borderRadius: '16px',
-                    padding: '14px 16px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <div
-                    style={{
-                      width: '42px',
-                      height: '42px',
-                      borderRadius: '12px',
-                      background: '#059669',
-                      color: '#fff',
-                      display: 'grid',
-                      placeItems: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <UtensilsCrossed size={20} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--ink)' }}>مطعم أو مقهى</div>
-                    <div style={{ fontSize: '12px', color: 'var(--muted)' }}>أطعمة، وجبات، وكافيه</div>
-                  </div>
-                  {restProjectType === 'restaurant' && <CheckCircle2 size={18} color="#10b981" />}
-                </div>
-
-                <div
-                  onClick={() => setRestProjectType('store')}
-                  style={{
-                    border: restProjectType === 'store' ? '2px solid #10b981' : '1px solid var(--line)',
-                    background: restProjectType === 'store' ? 'rgba(16, 185, 129, 0.14)' : 'color-mix(in srgb, var(--surface) 40%, transparent)',
-                    backdropFilter: 'blur(14px) saturate(1.25)',
-                    WebkitBackdropFilter: 'blur(14px) saturate(1.25)',
-                    borderRadius: '16px',
-                    padding: '14px 16px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <div
-                    style={{
-                      width: '42px',
-                      height: '42px',
-                      borderRadius: '12px',
-                      background: '#0ea5e9',
-                      color: '#fff',
-                      display: 'grid',
-                      placeItems: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Store size={20} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--ink)' }}>متجر أو محل تجاري</div>
-                    <div style={{ fontSize: '12px', color: 'var(--muted)' }}>منتجات، مبيعات، ومتاجر</div>
-                  </div>
-                  {restProjectType === 'store' && <CheckCircle2 size={18} color="#10b981" />}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '12px' }}>
-              <label className="f" style={{ marginBottom: 0 }}>
-                اسم المشروع *
-                <input
-                  type="text"
-                  value={restName}
-                  onChange={(e) => setRestName(e.target.value)}
-                  style={themedInputStyle}
-                  required
-                />
-              </label>
-
-              <label className="f" style={{ marginBottom: 0 }}>
-                الوصف المختصر أسفل الاسم (Tagline)
-                <input
-                  type="text"
-                  value={restTagline}
-                  onChange={(e) => setRestTagline(e.target.value)}
-                  placeholder="مثال: برجر سماش طازج • بطاطا مقرمشة • مشروبات باردة"
-                  style={themedInputStyle}
-                />
-              </label>
-            </div>
-
-            <label className="f">
-              نبذة عن المشروع (تظهر في نافذة "نبذة عنا" للزبائن)
-              <textarea
-                rows={2}
-                value={aboutTextInput}
-                onChange={(e) => setAboutTextInput(e.target.value)}
-                placeholder="اكتب قصة مشروعك، جودة المنتجات، وساعات الخدمة..."
-                style={themedInputStyle}
-              />
-            </label>
-
-            <label className="f" style={{ marginBottom: 0 }}>
-              ملاحظة الضريبة أو الفاتورة أسفل المنيو
-              <input
-                type="text"
-                value={taxNoteInput}
-                onChange={(e) => setTaxNoteInput(e.target.value)}
-                placeholder="مثال: جميع الأسعار شاملة الضريبة"
-                style={themedInputStyle}
-              />
-            </label>
-          </div>
-
-          <div style={{ height: '1px', background: 'var(--line)' }} />
-
-          <div>
-            <h3 style={{ fontSize: '16px', fontWeight: 900, color: 'var(--ink)', margin: '0 0 12px' }}>
-              التواصل والواتساب والسوشيال ميديا 📱
-            </h3>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-              <label className="f">
-                رقم هاتف الاتصال
-                <input
-                  type="tel"
-                  dir="ltr"
-                  value={restPhone}
-                  onChange={(e) => setRestPhone(e.target.value)}
-                  placeholder="07701234567"
-                  style={{ ...themedInputStyle, textAlign: 'left' }}
-                />
-              </label>
-
-              <label className="f">
-                رقم الواتساب لاستقبال الطلبات{' '}
-                {orderChannel === 'telegram' ? '(اختياري عند اختيار تيليجرام فقط)' : '*'}
-                <input
-                  type="tel"
-                  dir="ltr"
-                  value={restWa}
-                  onChange={(e) => setRestWa(e.target.value)}
-                  placeholder="07711448594"
-                  style={{ ...themedInputStyle, textAlign: 'left' }}
-                  required={orderChannel !== 'telegram'}
-                />
-              </label>
-            </div>
-
-            <label className="f">
-              عنوان ومقر المشروع بالتفصيل
-              <input
-                type="text"
-                value={restAddress}
-                onChange={(e) => setRestAddress(e.target.value)}
-                placeholder="بغداد، الكرادة..."
-                style={themedInputStyle}
-              />
-            </label>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-              <label className="f">
-                رابط موقع المشروع على خرائط جوجل
-                <input
-                  type="text"
-                  dir="ltr"
-                  value={restMapUrl}
-                  onChange={(e) => setRestMapUrl(e.target.value)}
-                  placeholder="https://maps.google.com/?q=..."
-                  style={{ ...themedInputStyle, textAlign: 'left' }}
-                />
-              </label>
-
-              <label className="f">
-                رابط تقييمات Google Maps (اختياري)
-                <input
-                  type="text"
-                  dir="ltr"
-                  value={restGoogleReviewUrl}
-                  onChange={(e) => setRestGoogleReviewUrl(e.target.value)}
-                  placeholder="https://g.page/r/..."
-                  style={{ ...themedInputStyle, textAlign: 'left' }}
-                />
-              </label>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-              <label className="f" style={{ marginBottom: 0 }}>
-                حساب الانستقرام
-                <input
-                  type="text"
-                  dir="ltr"
-                  value={restInstagram}
-                  onChange={(e) => setRestInstagram(e.target.value)}
-                  placeholder="https://instagram.com/..."
-                  style={{ ...themedInputStyle, textAlign: 'left' }}
-                />
-              </label>
-
-              <label className="f" style={{ marginBottom: 0 }}>
-                صفحة الفيسبوك
-                <input
-                  type="text"
-                  dir="ltr"
-                  value={restFacebook}
-                  onChange={(e) => setRestFacebook(e.target.value)}
-                  placeholder="https://facebook.com/..."
-                  style={{ ...themedInputStyle, textAlign: 'left' }}
-                />
-              </label>
-
-              <label className="f" style={{ marginBottom: 0 }}>
-                حساب التيك توك
-                <input
-                  type="text"
-                  dir="ltr"
-                  value={restTiktok}
-                  onChange={(e) => setRestTiktok(e.target.value)}
-                  placeholder="https://tiktok.com/@..."
-                  style={{ ...themedInputStyle, textAlign: 'left' }}
-                />
-              </label>
-            </div>
-          </div>
-          </div>
-        </motion.section>
-
-        {/* SECTION 5: ساعات العمل ومناطق التوصيل */}
-        <motion.section
-          id="sec-delivery"
-          className="mp-set-sec"
-          initial={prefersReducedMotion ? false : { opacity: 0, y: 14 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.06 }}
-          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <div className="mp-set-sec-head">
-            <h2 className="mp-set-sec-title">
-              <span className="mp-set-sec-num">5</span>
-              <span>ساعات العمل الأسبوعية وأسعار ومناطق التوصيل</span>
-            </h2>
-          </div>
-
-          <div className="mp-set-card">
-            <div>
-              <label className="f" style={{ marginBottom: '8px' }}>
-                نظام أوقات وساعات فتح المتجر
-                <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
                   <button
                     type="button"
-                    className={workMode === '24' ? 'btn p s' : 'btn s'}
+                    onClick={() => setRestProjectType('store')}
+                    className={`mp-set2-type-card ${restProjectType === 'store' ? 'is-selected' : ''}`}
+                  >
+                    <span
+                      style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '11px',
+                        background: '#0ea5e9',
+                        color: '#ffffff',
+                        display: 'grid',
+                        placeItems: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Store size={18} />
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontWeight: 800, fontSize: '13px', color: 'var(--ink)' }}>
+                        متجر أو محل
+                      </span>
+                      <span style={{ display: 'block', fontSize: '11px', color: 'var(--muted)', marginTop: '1px' }}>
+                        منتجات ومبيعات
+                      </span>
+                    </span>
+                    {restProjectType === 'store' && <CheckCircle2 size={16} color="#10b981" style={{ flexShrink: 0 }} />}
+                  </button>
+                </div>
+
+                <div className="mp-set2-grid-2">
+                  <label className="f" style={{ marginBottom: 0 }}>
+                    اسم المشروع *
+                    <input
+                      type="text"
+                      value={restName}
+                      onChange={(e) => setRestName(e.target.value)}
+                      style={themedInputStyle}
+                      required
+                    />
+                  </label>
+
+                  <label className="f" style={{ marginBottom: 0 }}>
+                    الوصف المختصر (Tagline)
+                    <input
+                      type="text"
+                      value={restTagline}
+                      onChange={(e) => setRestTagline(e.target.value)}
+                      placeholder="مثال: برجر سماش طازج • بطاطا مقرمشة"
+                      style={themedInputStyle}
+                    />
+                  </label>
+                </div>
+
+                <label className="f" style={{ marginBottom: 0 }}>
+                  نبذة عن المشروع (تظهر في نافذة «نبذة عنا»)
+                  <textarea
+                    rows={2}
+                    value={aboutTextInput}
+                    onChange={(e) => setAboutTextInput(e.target.value)}
+                    placeholder="اكتب قصة مشروعك، جودة المنتجات، وساعات الخدمة..."
+                    style={themedInputStyle}
+                  />
+                </label>
+
+                <label className="f" style={{ marginBottom: 0 }}>
+                  ملاحظة الضريبة أو الفاتورة أسفل المنيو
+                  <input
+                    type="text"
+                    value={taxNoteInput}
+                    onChange={(e) => setTaxNoteInput(e.target.value)}
+                    placeholder="مثال: جميع الأسعار شاملة الضريبة"
+                    style={themedInputStyle}
+                  />
+                </label>
+              </div>
+
+              {/* Contact & Location */}
+              <div className="mp-set2-panel">
+                <div className="mp-set2-panel-head">
+                  <h2 className="mp-set2-panel-title">
+                    <Phone size={15} style={{ color: 'var(--brand-ink, #34D399)' }} />
+                    <span>التواصل والموقع والخرائط</span>
+                  </h2>
+                </div>
+
+                <div className="mp-set2-grid-2">
+                  <label className="f" style={{ marginBottom: 0 }}>
+                    رقم هاتف الاتصال
+                    <input
+                      type="tel"
+                      dir="ltr"
+                      value={restPhone}
+                      onChange={(e) => setRestPhone(e.target.value)}
+                      placeholder="07701234567"
+                      style={{ ...themedInputStyle, textAlign: 'left' }}
+                    />
+                  </label>
+
+                  <label className="f" style={{ marginBottom: 0 }}>
+                    رقم الواتساب لاستقبال الطلبات{' '}
+                    {orderChannel === 'telegram' ? '(اختياري)' : '*'}
+                    <input
+                      ref={waInputRef}
+                      type="tel"
+                      dir="ltr"
+                      value={restWa}
+                      onChange={(e) => setRestWa(e.target.value)}
+                      placeholder="07711448594"
+                      style={{ ...themedInputStyle, textAlign: 'left' }}
+                      required={orderChannel !== 'telegram'}
+                    />
+                  </label>
+                </div>
+
+                <label className="f" style={{ marginBottom: 0 }}>
+                  عنوان ومقر المشروع بالتفصيل
+                  <input
+                    type="text"
+                    value={restAddress}
+                    onChange={(e) => setRestAddress(e.target.value)}
+                    placeholder="بغداد، الكرادة..."
+                    style={themedInputStyle}
+                  />
+                </label>
+
+                <div className="mp-set2-grid-2">
+                  <label className="f" style={{ marginBottom: 0 }}>
+                    رابط الموقع على خرائط جوجل
+                    <input
+                      type="text"
+                      dir="ltr"
+                      value={restMapUrl}
+                      onChange={(e) => setRestMapUrl(e.target.value)}
+                      placeholder="https://maps.google.com/?q=..."
+                      style={{ ...themedInputStyle, textAlign: 'left' }}
+                    />
+                  </label>
+
+                  <label className="f" style={{ marginBottom: 0 }}>
+                    رابط تقييمات Google Maps (اختياري)
+                    <input
+                      type="text"
+                      dir="ltr"
+                      value={restGoogleReviewUrl}
+                      onChange={(e) => setRestGoogleReviewUrl(e.target.value)}
+                      placeholder="https://g.page/r/..."
+                      style={{ ...themedInputStyle, textAlign: 'left' }}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Social Media */}
+              <div className="mp-set2-panel">
+                <div className="mp-set2-panel-head">
+                  <h2 className="mp-set2-panel-title">حسابات التواصل الاجتماعي</h2>
+                </div>
+
+                <div className="mp-set2-grid-3">
+                  <label className="f" style={{ marginBottom: 0 }}>
+                    انستقرام (Instagram)
+                    <input
+                      type="text"
+                      dir="ltr"
+                      value={restInstagram}
+                      onChange={(e) => setRestInstagram(e.target.value)}
+                      placeholder="https://instagram.com/..."
+                      style={{ ...themedInputStyle, textAlign: 'left' }}
+                    />
+                  </label>
+
+                  <label className="f" style={{ marginBottom: 0 }}>
+                    فيسبوك (Facebook)
+                    <input
+                      type="text"
+                      dir="ltr"
+                      value={restFacebook}
+                      onChange={(e) => setRestFacebook(e.target.value)}
+                      placeholder="https://facebook.com/..."
+                      style={{ ...themedInputStyle, textAlign: 'left' }}
+                    />
+                  </label>
+
+                  <label className="f" style={{ marginBottom: 0 }}>
+                    تيك توك (TikTok)
+                    <input
+                      type="text"
+                      dir="ltr"
+                      value={restTiktok}
+                      onChange={(e) => setRestTiktok(e.target.value)}
+                      placeholder="https://tiktok.com/@..."
+                      style={{ ...themedInputStyle, textAlign: 'left' }}
+                    />
+                  </label>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {sectionTab === 'delivery' && (
+            <motion.div
+              key="tab-delivery"
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={prefersReducedMotion ? undefined : { opacity: 0, y: -6 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+            >
+              {/* Working Hours Panel */}
+              <div className="mp-set2-panel">
+                <div className="mp-set2-panel-head">
+                  <div>
+                    <h2 className="mp-set2-panel-title">
+                      <Clock size={15} style={{ color: 'var(--brand-ink, #34D399)' }} />
+                      <span>أوقات وساعات العمل</span>
+                    </h2>
+                  </div>
+                </div>
+
+                <div className="mp-set2-seg-2" role="group" aria-label="نظام أوقات العمل">
+                  <button
+                    type="button"
+                    className={`mp-set2-seg-2-btn ${workMode === '24' ? 'active' : ''}`}
                     onClick={() => setWorkMode('24')}
                   >
-                    مفتوح 24 ساعة (طوال الأسبوع)
+                    مفتوح 24 ساعة
                   </button>
                   <button
                     type="button"
-                    className={workMode === 'c' ? 'btn p s' : 'btn s'}
+                    className={`mp-set2-seg-2-btn ${workMode === 'c' ? 'active' : ''}`}
                     onClick={() => setWorkMode('c')}
                   >
-                    جدول أيام أسبوعي مخصص (يبدأ بالأحد)
+                    جدول أسبوعي مخصص
                   </button>
                 </div>
-              </label>
 
-              {workMode === 'c' && (
-                <div
-                  style={{
-                    marginTop: '10px',
-                    padding: '10px 0 0',
-                    borderRadius: 0,
-                    background: 'transparent',
-                    border: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '8px',
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '8px',
-                      paddingBottom: '10px',
-                      borderBottom: '1px solid var(--line)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--muted)' }}>التوقيت الموحد السريع:</span>
-                      <input
-                        type="time"
-                        value={workFrom}
-                        onChange={(e) => setWorkFrom(e.target.value)}
-                        style={{ ...themedInputStyle, width: 'auto', padding: '5px 8px', fontSize: '12.5px' }}
-                      />
-                      <span style={{ fontSize: '12px', color: 'var(--muted)' }}>إلى</span>
-                      <input
-                        type="time"
-                        value={workTo}
-                        onChange={(e) => setWorkTo(e.target.value)}
-                        style={{ ...themedInputStyle, width: 'auto', padding: '5px 8px', fontSize: '12.5px' }}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      className="btn s"
-                      onClick={() => applyTimeToOpenDays(workFrom, workTo)}
-                      style={{ fontSize: '12px', fontWeight: 800 }}
+                <AnimatePresence initial={false}>
+                  {workMode === 'c' && (
+                    <motion.div
+                      initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={prefersReducedMotion ? undefined : { opacity: 0, y: -4 }}
+                      transition={{ duration: 0.2 }}
+                      style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
                     >
-                      تطبيق على كل الأيام المفتوحة
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {WEEK_DAYS_ORDER.map(({ key, label }) => {
-                      const dayCfg = weeklyHours[key] || { open: true, from: workFrom, to: workTo };
-                      return (
-                        <div
-                          key={key}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            flexWrap: 'wrap',
-                            gap: '8px',
-                            padding: '8px 2px',
-                            borderRadius: 0,
-                            background: 'transparent',
-                            border: 0,
-                            borderBottom: '1px solid var(--line)',
-                            opacity: dayCfg.open ? 1 : 0.68,
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '130px' }}>
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-checked={dayCfg.open}
-                              aria-label={`${label} ${dayCfg.open ? 'مفتوح' : 'مغلق'}`}
-                              onClick={() =>
-                                setWeeklyHours((prev) => ({
-                                  ...prev,
-                                  [key]: { ...dayCfg, open: !dayCfg.open },
-                                }))
-                              }
-                              className={`ios-switch ${dayCfg.open ? 'on' : 'off'}`}
-                            >
-                              <span className="ios-switch-thumb" />
-                            </button>
-                            <span style={{ fontWeight: 800, fontSize: '13px', color: 'var(--ink)' }}>{label}</span>
-                            <span style={{ fontSize: '11px', fontWeight: 700, color: dayCfg.open ? '#10b981' : '#ef4444' }}>
-                              {dayCfg.open ? 'مفتوح' : 'مغلق'}
-                            </span>
-                          </div>
-
-                          {dayCfg.open && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              <input
-                                type="time"
-                                value={dayCfg.from || workFrom}
-                                onChange={(e) =>
-                                  setWeeklyHours((prev) => ({
-                                    ...prev,
-                                    [key]: { ...dayCfg, from: e.target.value },
-                                  }))
-                                }
-                                style={{ ...themedInputStyle, width: 'auto', padding: '5px 8px', fontSize: '12.5px' }}
-                              />
-                              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>—</span>
-                              <input
-                                type="time"
-                                value={dayCfg.to || workTo}
-                                onChange={(e) =>
-                                  setWeeklyHours((prev) => ({
-                                    ...prev,
-                                    [key]: { ...dayCfg, to: e.target.value },
-                                  }))
-                                }
-                                style={{ ...themedInputStyle, width: 'auto', padding: '5px 8px', fontSize: '12.5px' }}
-                              />
-                            </div>
-                          )}
+                      {/* Quick Unified Time Bar */}
+                      <div
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: '12px',
+                          background: 'color-mix(in srgb, var(--bg) 52%, transparent)',
+                          border: '1px solid var(--line)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '8px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--muted)' }}>
+                            توقيت موحد:
+                          </span>
+                          <input
+                            type="time"
+                            value={workFrom}
+                            onChange={(e) => setWorkFrom(e.target.value)}
+                            style={{ ...themedInputStyle, width: 'auto', padding: '5px 8px', fontSize: '12.5px' }}
+                          />
+                          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>إلى</span>
+                          <input
+                            type="time"
+                            value={workTo}
+                            onChange={(e) => setWorkTo(e.target.value)}
+                            style={{ ...themedInputStyle, width: 'auto', padding: '5px 8px', fontSize: '12.5px' }}
+                          />
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
+                        <button
+                          type="button"
+                          className="btn s"
+                          onClick={() => applyTimeToOpenDays(workFrom, workTo)}
+                          style={{ fontSize: '12px', fontWeight: 800 }}
+                        >
+                          تطبيق على الأيام المفتوحة
+                        </button>
+                      </div>
 
-            <div style={{ paddingTop: '14px', borderTop: '1px solid var(--line)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <MapPin size={16} style={{ color: 'var(--brand-ink, #34D399)' }} />
-                  <b style={{ fontSize: '14px', color: 'var(--ink)' }}>أسعار التوصيل حسب المحافظة والمنطقة / القضاء</b>
-                </div>
-                <button
-                  type="button"
-                  className="btn s"
-                  onClick={() =>
-                    setDeliveryZonesState((prev) => [...prev, { area: '', fee: 2000, cities: [] }])
-                  }
-                >
-                  <Plus size={14} />
-                  <span>إضافة محافظة / منطقة</span>
-                </button>
+                      {/* 7 Days List */}
+                      <div>
+                        {WEEK_DAYS_ORDER.map(({ key, label }) => {
+                          const dayCfg = weeklyHours[key] || { open: true, from: workFrom, to: workTo };
+                          return (
+                            <div
+                              key={key}
+                              className="mp-set2-day-row"
+                              style={{ opacity: dayCfg.open ? 1 : 0.65 }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: '126px' }}>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={dayCfg.open}
+                                  aria-label={`${label} ${dayCfg.open ? 'مفتوح' : 'مغلق'}`}
+                                  onClick={() =>
+                                    setWeeklyHours((prev) => ({
+                                      ...prev,
+                                      [key]: { ...dayCfg, open: !dayCfg.open },
+                                    }))
+                                  }
+                                  className={`ios-switch sm ${dayCfg.open ? 'on' : 'off'}`}
+                                >
+                                  <span className="ios-switch-thumb" />
+                                </button>
+                                <span style={{ fontWeight: 800, fontSize: '13.5px', color: 'var(--ink)' }}>
+                                  {label}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    color: dayCfg.open ? '#10b981' : '#ef4444',
+                                  }}
+                                >
+                                  {dayCfg.open ? 'مفتوح' : 'مغلق'}
+                                </span>
+                              </div>
+
+                              {dayCfg.open && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <input
+                                    type="time"
+                                    value={dayCfg.from || workFrom}
+                                    onChange={(e) =>
+                                      setWeeklyHours((prev) => ({
+                                        ...prev,
+                                        [key]: { ...dayCfg, from: e.target.value },
+                                      }))
+                                    }
+                                    style={{ ...themedInputStyle, width: 'auto', padding: '5px 8px', fontSize: '12.5px' }}
+                                  />
+                                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>—</span>
+                                  <input
+                                    type="time"
+                                    value={dayCfg.to || workTo}
+                                    onChange={(e) =>
+                                      setWeeklyHours((prev) => ({
+                                        ...prev,
+                                        [key]: { ...dayCfg, to: e.target.value },
+                                      }))
+                                    }
+                                    style={{ ...themedInputStyle, width: 'auto', padding: '5px 8px', fontSize: '12.5px' }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
-              {deliveryZonesState.length === 0 ? (
-                <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--muted)' }}>
-                  لم تُضف مناطق توصيل بعد. يمكنك إضافة منطقة بسعر مباشر، أو محافظة وتحتها عدة أقضية/مناطق بأسعار مختلفة لتظهر في سلة الزبون.
-                </p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {deliveryZonesState.map((zone, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        background: 'transparent',
-                        border: 0,
-                        borderBottom: '1px solid var(--line)',
-                        borderRadius: 0,
-                        padding: '12px 0',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                      }}
-                    >
-                      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(130px, 1fr) 115px auto', gap: '8px', alignItems: 'center' }}>
-                        <input
-                          type="text"
-                          value={zone.area}
-                          onChange={(e) =>
-                            setDeliveryZonesState((prev) =>
-                              prev.map((z, i) => (i === idx ? { ...z, area: e.target.value } : z))
-                            )
-                          }
-                          placeholder="المحافظة أو المنطقة (مثال: بغداد / الكرادة)"
-                          style={themedInputStyle}
-                        />
-                        <input
-                          type="number"
-                          min={0}
-                          value={zone.fee}
-                          onChange={(e) =>
-                            setDeliveryZonesState((prev) =>
-                              prev.map((z, i) => (i === idx ? { ...z, fee: Number(e.target.value) || 0 } : z))
-                            )
-                          }
-                          placeholder={`الأجرة (${restCurrency})`}
-                          style={themedInputStyle}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setDeliveryZonesState((prev) => prev.filter((_, i) => i !== idx))}
-                          title="حذف المحافظة / المنطقة"
-                          style={{
-                            width: '36px',
-                            height: '36px',
-                            borderRadius: '10px',
-                            border: '1px solid rgba(239, 68, 68, 0.3)',
-                            background: 'rgba(239, 68, 68, 0.1)',
-                            color: '#ef4444',
-                            display: 'grid',
-                            placeItems: 'center',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+              {/* Delivery Zones & Fees */}
+              <div className="mp-set2-panel">
+                <div className="mp-set2-panel-head">
+                  <div>
+                    <h2 className="mp-set2-panel-title">
+                      <MapPin size={16} style={{ color: 'var(--brand-ink, #34D399)' }} />
+                      <span>أسعار ومناطق التوصيل</span>
+                    </h2>
+                    <p className="mp-set2-panel-sub">
+                      أضف منطقة بسعر مباشر أو محافظة وتحتها أقضية بأسعار مختلفة
+                    </p>
+                  </div>
 
-                      {zone.cities && zone.cities.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingInlineStart: '12px', borderInlineStart: '2px solid var(--line)' }}>
-                          {zone.cities.map((city, cIdx) => (
-                            <div key={cIdx} style={{ display: 'grid', gridTemplateColumns: 'minmax(110px, 1fr) 100px auto', gap: '6px', alignItems: 'center' }}>
-                              <input
-                                type="text"
-                                value={city.name}
-                                onChange={(e) =>
-                                  setDeliveryZonesState((prev) =>
-                                    prev.map((z, i) =>
-                                      i === idx
-                                        ? {
-                                            ...z,
-                                            cities: z.cities.map((c, j) => (j === cIdx ? { ...c, name: e.target.value } : c)),
-                                          }
-                                        : z
-                                    )
-                                  )
-                                }
-                                placeholder="اسم القضاء / الحي (مثال: المنصور)"
-                                style={{ ...themedInputStyle, padding: '7px 10px', fontSize: '12.5px' }}
-                              />
-                              <input
-                                type="number"
-                                min={0}
-                                value={city.fee}
-                                onChange={(e) =>
-                                  setDeliveryZonesState((prev) =>
-                                    prev.map((z, i) =>
-                                      i === idx
-                                        ? {
-                                            ...z,
-                                            cities: z.cities.map((c, j) => (j === cIdx ? { ...c, fee: Number(e.target.value) || 0 } : c)),
-                                          }
-                                        : z
-                                    )
-                                  )
-                                }
-                                placeholder="الأجرة"
-                                style={{ ...themedInputStyle, padding: '7px 10px', fontSize: '12.5px' }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setDeliveryZonesState((prev) =>
-                                    prev.map((z, i) =>
-                                      i === idx ? { ...z, cities: z.cities.filter((_, j) => j !== cIdx) } : z
-                                    )
-                                  )
-                                }
-                                title="حذف الحي الفرعي"
+                  <button
+                    type="button"
+                    className="btn p s"
+                    style={{ fontWeight: 800 }}
+                    onClick={() =>
+                      setDeliveryZonesState((prev) => [...prev, { area: '', fee: 2000, cities: [] }])
+                    }
+                  >
+                    <Plus size={14} />
+                    <span>إضافة منطقة</span>
+                  </button>
+                </div>
+
+                {deliveryZonesState.length === 0 ? (
+                  <div
+                    style={{
+                      border: '1px dashed var(--line)',
+                      borderRadius: '14px',
+                      padding: '22px 14px',
+                      textAlign: 'center',
+                      color: 'var(--muted)',
+                      fontSize: '12.5px',
+                    }}
+                  >
+                    <MapPin size={22} style={{ margin: '0 auto 6px', opacity: 0.6 }} />
+                    <div>لم تُضف مناطق توصيل بعد. اضغط «إضافة منطقة» للبدء.</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {deliveryZonesState.map((zone, idx) => (
+                      <div key={idx} className="mp-set2-zone-card">
+                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(115px, 1fr) 98px auto', gap: '8px', alignItems: 'center' }}>
+                          <input
+                            type="text"
+                            value={zone.area}
+                            onChange={(e) =>
+                              setDeliveryZonesState((prev) =>
+                                prev.map((z, i) => (i === idx ? { ...z, area: e.target.value } : z))
+                              )
+                            }
+                            placeholder="المحافظة أو المنطقة"
+                            style={themedInputStyle}
+                          />
+                          <input
+                            type="number"
+                            min={0}
+                            value={zone.fee}
+                            onChange={(e) =>
+                              setDeliveryZonesState((prev) =>
+                                prev.map((z, i) => (i === idx ? { ...z, fee: Number(e.target.value) || 0 } : z))
+                              )
+                            }
+                            placeholder={`الأجرة (${restCurrency})`}
+                            style={themedInputStyle}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setDeliveryZonesState((prev) => prev.filter((_, i) => i !== idx))}
+                            title="حذف المحافظة / المنطقة"
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '10px',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              background: 'rgba(239, 68, 68, 0.1)',
+                              color: '#ef4444',
+                              display: 'grid',
+                              placeItems: 'center',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+
+                        {zone.cities && zone.cities.length > 0 && (
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '6px',
+                              paddingInlineStart: '12px',
+                              borderInlineStart: '2px solid var(--line)',
+                            }}
+                          >
+                            {zone.cities.map((city, cIdx) => (
+                              <div
+                                key={cIdx}
                                 style={{
-                                  width: '32px',
-                                  height: '32px',
-                                  borderRadius: '8px',
-                                  border: '1px solid rgba(239, 68, 68, 0.25)',
-                                  background: 'rgba(239, 68, 68, 0.08)',
-                                  color: '#ef4444',
                                   display: 'grid',
-                                  placeItems: 'center',
-                                  cursor: 'pointer',
+                                  gridTemplateColumns: 'minmax(100px, 1fr) 90px auto',
+                                  gap: '6px',
+                                  alignItems: 'center',
                                 }}
                               >
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                                <input
+                                  type="text"
+                                  value={city.name}
+                                  onChange={(e) =>
+                                    setDeliveryZonesState((prev) =>
+                                      prev.map((z, i) =>
+                                        i === idx
+                                          ? {
+                                              ...z,
+                                              cities: z.cities.map((c, j) => (j === cIdx ? { ...c, name: e.target.value } : c)),
+                                            }
+                                          : z
+                                      )
+                                    )
+                                  }
+                                  placeholder="القضاء / الحي (مثال: المنصور)"
+                                  style={{ ...themedInputStyle, padding: '7px 10px', fontSize: '12.5px' }}
+                                />
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={city.fee}
+                                  onChange={(e) =>
+                                    setDeliveryZonesState((prev) =>
+                                      prev.map((z, i) =>
+                                        i === idx
+                                          ? {
+                                              ...z,
+                                              cities: z.cities.map((c, j) => (j === cIdx ? { ...c, fee: Number(e.target.value) || 0 } : c)),
+                                            }
+                                          : z
+                                      )
+                                    )
+                                  }
+                                  placeholder="الأجرة"
+                                  style={{ ...themedInputStyle, padding: '7px 10px', fontSize: '12.5px' }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setDeliveryZonesState((prev) =>
+                                      prev.map((z, i) =>
+                                        i === idx ? { ...z, cities: z.cities.filter((_, j) => j !== cIdx) } : z
+                                      )
+                                    )
+                                  }
+                                  title="حذف الحي الفرعي"
+                                  style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '8px',
+                                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                                    background: 'rgba(239, 68, 68, 0.08)',
+                                    color: '#ef4444',
+                                    display: 'grid',
+                                    placeItems: 'center',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDeliveryZonesState((prev) =>
-                              prev.map((z, i) =>
-                                i === idx
-                                  ? { ...z, cities: [...(z.cities || []), { name: '', fee: z.fee || 2000 }] }
-                                  : z
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDeliveryZonesState((prev) =>
+                                prev.map((z, i) =>
+                                  i === idx
+                                    ? { ...z, cities: [...(z.cities || []), { name: '', fee: z.fee || 2000 }] }
+                                    : z
+                                )
                               )
-                            )
-                          }
-                          style={{
-                            background: 'var(--soft)',
-                            color: 'var(--brand-ink, #34D399)',
-                            border: '1px solid var(--line)',
-                            borderRadius: '8px',
-                            padding: '4px 10px',
-                            fontSize: '11.5px',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          + إضافة قضاء / حي فرعي لهذه المنطقة
-                        </button>
+                            }
+                            style={{
+                              background: 'var(--soft)',
+                              color: 'var(--brand-ink, #34D399)',
+                              border: '1px solid var(--line)',
+                              borderRadius: '8px',
+                              padding: '5px 10px',
+                              fontSize: '11.5px',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            + إضافة قضاء / حي فرعي
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </motion.section>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </form>
 
       <MediaLibraryModal
