@@ -58,6 +58,7 @@ export const AddonsPage: React.FC = () => {
     handleToggleAddon,
     handleOpenAddonEdit,
     handleSaveAddonEdit,
+    closeAddonEditModal,
     mediaLibraryItems,
     uploadImagesToLibrary,
     removeMediaLibraryItem,
@@ -79,11 +80,7 @@ export const AddonsPage: React.FC = () => {
     setAddonDraft(updater);
   };
 
-  const closeEditModal = () => {
-    setEditingAddonKey(null);
-    setAddonEditError('');
-    setAddonEditIntent('edit');
-  };
+  const closeEditModal = closeAddonEditModal;
 
   const activeMeta = editingAddonKey ? localizedCatalog.find((a) => a.key === editingAddonKey) : null;
   const activeSavedCfg = editingAddonKey
@@ -128,15 +125,13 @@ export const AddonsPage: React.FC = () => {
             <motion.div
               key={addon.key}
               className={`mp-addon-square-card ${isEnabled ? 'is-enabled' : ''} ${!allowed ? 'is-locked' : ''}`}
-              initial={prefersReducedMotion ? false : { opacity: 0, y: 12 }}
-              whileInView={{ opacity: allowed ? 1 : 0.72, y: 0 }}
-              viewport={{ once: true, amount: 0.05 }}
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: allowed ? 1 : 0.72, y: 0 }}
               transition={{
-                duration: 0.82,
-                delay: prefersReducedMotion ? 0 : Math.min((idx % 8) * 0.06, 0.38),
+                duration: 0.3,
+                delay: prefersReducedMotion ? 0 : Math.min((idx % 8) * 0.03, 0.2),
                 ease: [0.16, 1, 0.3, 1],
               }}
-              whileHover={prefersReducedMotion ? undefined : { y: -2 }}
             >
               {/* Top Row: Icon + Status Pill */}
               <div className="mp-addon-card-head">
@@ -213,7 +208,7 @@ export const AddonsPage: React.FC = () => {
             onClick={(e) => e.stopPropagation()}
             initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             style={surfaceCardStyle}
           >
             <form onSubmit={handleSaveAddonEdit} className="mp-addon-modal-form" noValidate>

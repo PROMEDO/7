@@ -1253,12 +1253,14 @@ export function saveStore(store: StoreData) {
 
 const recentLocalWriteTs = new Map<string, number>();
 let isPushRunning = false;
+let activePushKeys = new Set<string>();
 let queuedPut: Record<string, unknown> = {};
 let queuedDel = new Set<string>();
 let queuedWaiters: Array<{
   resolve: (val: { assignedOrderSeqs?: Record<string, number>; assignedReportSeqs?: Record<string, number> }) => void;
 }> = [];
 let activePushPromise: Promise<unknown> | null = null;
+const DB_FETCH_TIMEOUT_MS = 8000;
 
 const syncChannel =
   typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('menuplus_sync') : null;
@@ -1291,11 +1293,27 @@ function markLocalWriteKeys(put?: Record<string, unknown>, del?: string[]) {
   }
 }
 
+function collectDiffKeys(diff: { put?: Record<string, unknown>; del?: string[] }): Set<string> {
+  const keys = new Set<string>();
+  if (diff.put) {
+    for (const k of Object.keys(diff.put)) keys.add(k);
+  }
+  if (diff.del) {
+    for (const k of diff.del) keys.add(k);
+  }
+  return keys;
+}
+
 async function performPushDbDiff(diff: {
   put?: Record<string, unknown>;
   del?: string[];
 }): Promise<{ assignedOrderSeqs?: Record<string, number>; assignedReportSeqs?: Record<string, number> }> {
   if (typeof fetch === 'undefined') return {};
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId =
+    controller && typeof window !== 'undefined'
+      ? window.setTimeout(() => controller.abort(), DB_FETCH_TIMEOUT_MS)
+      : null;
   try {
     const res = await fetch('/api/db', {
       method: 'POST',
@@ -1303,6 +1321,7 @@ async function performPushDbDiff(diff: {
       credentials: 'include',
       cache: 'no-store',
       body: JSON.stringify(diff),
+      ...(controller ? { signal: controller.signal } : {}),
     });
     if (res.ok) {
       const data = (await res.json().catch(() => null)) as {
@@ -1353,7 +1372,11 @@ async function performPushDbDiff(diff: {
       }
     }
   } catch {
-    // offline standalone fallback
+    // offline standalone fallback or timeout
+  } finally {
+    if (timeoutId !== null && typeof window !== 'undefined') {
+      window.clearTimeout(timeoutId);
+    }
   }
   return {};
 }
@@ -1370,8 +1393,14 @@ async function drainQueuedDiffs() {
     const payload: { put?: Record<string, unknown>; del?: string[] } = {};
     if (Object.keys(batchPut).length > 0) payload.put = batchPut;
     if (batchDel.length > 0) payload.del = batchDel;
+    activePushKeys = collectDiffKeys(payload);
 
-    const result = await performPushDbDiff(payload);
+    let result: { assignedOrderSeqs?: Record<string, number>; assignedReportSeqs?: Record<string, number> } = {};
+    try {
+      result = await performPushDbDiff(payload);
+    } catch {
+      result = {};
+    }
     for (const w of waiters) {
       w.resolve(result);
     }
@@ -1386,13 +1415,23 @@ export function pushDbDiff(diff: {
 
   if (!isPushRunning) {
     isPushRunning = true;
+    activePushKeys = collectDiffKeys(diff);
     const runPromise = (async () => {
       try {
         return await performPushDbDiff(diff);
       } finally {
-        await drainQueuedDiffs();
-        isPushRunning = false;
-        activePushPromise = null;
+        try {
+          await drainQueuedDiffs();
+        } finally {
+          activePushKeys = new Set<string>();
+          isPushRunning = false;
+          activePushPromise = null;
+          if (queuedWaiters.length > 0) {
+            const strayWaiters = queuedWaiters;
+            queuedWaiters = [];
+            for (const w of strayWaiters) w.resolve({});
+          }
+        }
       }
     })();
     activePushPromise = runPromise;
@@ -2107,11 +2146,17 @@ export async function syncFromServer(): Promise<boolean> {
   const fetchStartedAt = Date.now();
   const local = loadStore();
   if (typeof fetch !== 'undefined') {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId =
+      controller && typeof window !== 'undefined'
+        ? window.setTimeout(() => controller.abort(), DB_FETCH_TIMEOUT_MS)
+        : null;
     try {
       const res = await fetch('/api/db', {
         cache: 'no-store',
         credentials: 'include',
         headers: getAuthHeaders(),
+        ...(controller ? { signal: controller.signal } : {}),
       });
       if (res.ok) {
         const remote = (await res.json()) as StoreData;
@@ -2134,9 +2179,13 @@ export async function syncFromServer(): Promise<boolean> {
             }
           }
           const merged: StoreData = { ...cleanedLocal, ...remote };
-          // Protect any key written locally right before or while the GET /api/db was in flight
+          // Protect any key written locally right before/during GET /api/db or still queued/in-flight
           for (const [k, writeTs] of recentLocalWriteTs.entries()) {
-            if (writeTs >= fetchStartedAt - 1500) {
+            const isQueuedOrInFlight =
+              activePushKeys.has(k) ||
+              Object.prototype.hasOwnProperty.call(queuedPut, k) ||
+              queuedDel.has(k);
+            if (isQueuedOrInFlight || writeTs >= fetchStartedAt - 6000) {
               if (Object.prototype.hasOwnProperty.call(cleanedLocal, k)) {
                 merged[k] = cleanedLocal[k];
               } else {
@@ -2158,7 +2207,11 @@ export async function syncFromServer(): Promise<boolean> {
         }
       }
     } catch {
-      // standalone offline mode
+      // standalone offline mode or timeout
+    } finally {
+      if (timeoutId !== null && typeof window !== 'undefined') {
+        window.clearTimeout(timeoutId);
+      }
     }
   }
   migrateBrandInStore(loadStore(), true);

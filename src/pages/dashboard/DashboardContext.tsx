@@ -774,6 +774,8 @@ function useDashboardController({
 
   // Addons state synchronized with Restaurant object
   const [addonsState, setAddonsState] = useState<RestaurantAddons>(() => buildDefaultAddons(rest));
+  const addonsStateRef = useRef<RestaurantAddons>(addonsState);
+  addonsStateRef.current = addonsState;
   const [addonCategoryFilter, setAddonCategoryFilter] = useState<AddonCategoryFilter>('all');
   const [addonSearchQuery, setAddonSearchQuery] = useState('');
   const [editingAddonKey, setEditingAddonKey] = useState<AddonKey | null>(null);
@@ -1094,14 +1096,26 @@ function useDashboardController({
     slug: string;
   }) => JSON.stringify(vals);
 
+  const buildAddonsSignature = (rObj: Restaurant, targetRid: string) =>
+    `${targetRid}|${Number(rObj.freeDeliveryMin || 0)}|${JSON.stringify(rObj.addons || {})}|${JSON.stringify(rObj.offerPopup || {})}`;
+
   const buildRestSignature = (rObj: Restaurant, targetRid: string) =>
     `${targetRid}|${rObj.planId || ''}|${rObj.slug || ''}|${rObj.lay || ''}|${rObj.themeMode || ''}|${rObj.dashboardThemeMode || ''}|${rObj.themePreset || ''}|${rObj.themeShape || ''}|${rObj.color || ''}|${rObj.bgColor || ''}|${rObj.currency || ''}|${rObj.logo || ''}|${rObj.coverImages?.[0] || ''}|${rObj.n || ''}|${rObj.orderChannel || ''}|${rObj.telegramNotificationsEnabled === false ? '0' : '1'}|${rObj.a === 0 ? '0' : '1'}|${rObj.address || ''}|${rObj.ph || ''}`;
 
   // Synchronize dashboard form state when switching branch or syncing remote DB
   const syncedRestRef = useRef<string>('');
+  const syncedAddonsSigRef = useRef<string>('');
   const syncedRidRef = useRef<string>('');
   useEffect(() => {
     const ridChanged = syncedRidRef.current !== rid;
+    const nextAddonsSig = buildAddonsSignature(rest, rid);
+    if (ridChanged || syncedAddonsSigRef.current !== nextAddonsSig) {
+      syncedAddonsSigRef.current = nextAddonsSig;
+      const nextAddons = buildDefaultAddons(rest);
+      addonsStateRef.current = nextAddons;
+      setAddonsState(nextAddons);
+    }
+
     if (!ridChanged && settingsSyncTimerRef.current !== null) {
       // Do not overwrite user's active in-progress settings edits during background polling
       return;
@@ -1110,7 +1124,6 @@ function useDashboardController({
     if (syncedRestRef.current === sig) return;
     syncedRestRef.current = sig;
     syncedRidRef.current = rid;
-    setAddonsState(buildDefaultAddons(rest));
     if (colorSyncTimerRef.current === null) {
       const candidateLay = normalizeLayoutChoice(rest.lay);
       const safeLay = isLayoutAllowed(candidateLay) ? candidateLay : 'list';
@@ -1325,7 +1338,7 @@ function useDashboardController({
     }
   };
 
-  const persistAddons = async (nextAddons: RestaurantAddons) => {
+  const persistAddons = (nextAddons: RestaurantAddons) => {
     const latestRest = getItem<Restaurant>(`restaurants/${rid}`) || rest;
 
     const freeDeliveryEnabled = Boolean(nextAddons.freeDeliveryProgress?.enabled);
@@ -1336,7 +1349,7 @@ function useDashboardController({
     const popupMode = nextAddons.offerPopup?.mode === 'dish' ? 'dish' : 'ad';
     const defaultPopupBtn = popupMode === 'dish' ? 'إضافة إلى السلة' : 'إغلاق';
 
-    await putItemAndSync<Restaurant>(`restaurants/${rid}`, {
+    const nextPayload: Restaurant = {
       ...latestRest,
       addons: nextAddons,
       freeDeliveryMin: freeDeliveryThreshold,
@@ -1357,12 +1370,19 @@ function useDashboardController({
         image: nextAddons.offerPopup?.image || '',
         buttonText: nextAddons.offerPopup?.buttonText || defaultPopupBtn,
       },
-    });
+    };
+
+    const normalizedNext = ensureRestaurantDefaults(nextPayload);
+    syncedAddonsSigRef.current = buildAddonsSignature(normalizedNext, rid);
+    syncedRestRef.current = buildRestSignature(normalizedNext, rid);
+    addonsStateRef.current = nextAddons;
     setAddonsState(nextAddons);
+
+    putItem<Restaurant>(`restaurants/${rid}`, nextPayload);
     onRefresh();
   };
 
-  const handleToggleAddon = async (addonMeta: AddonMetaItem) => {
+  const handleToggleAddon = (addonMeta: AddonMetaItem) => {
     const localizedTitle =
       ADDON_CATALOG.find((a) => a.key === addonMeta.key)?.title || addonMeta.title;
     if (!isAddonAllowedForPlan(addonMeta.key, resolvedPlan)) {
@@ -1370,7 +1390,8 @@ function useDashboardController({
       showToast(`هذه الميزة متاحة في ${reqLabel} 🔒`);
       return;
     }
-    const current = (addonsState[addonMeta.key] || {}) as Record<string, any>;
+    const latestAddons = addonsStateRef.current;
+    const current = (latestAddons[addonMeta.key] || {}) as Record<string, any>;
     const isCurrentlyEnabled = Boolean(current.enabled);
 
     // Do NOT allow enabling directly — always open the setup/edit popup first!
@@ -1380,7 +1401,7 @@ function useDashboardController({
     }
 
     const nextAddons: RestaurantAddons = {
-      ...addonsState,
+      ...latestAddons,
       [addonMeta.key]: {
         ...current,
         configured: true,
@@ -1388,7 +1409,7 @@ function useDashboardController({
         ...(addonMeta.key === 'audioBell' ? { mutedByUser: true } : {}),
       },
     };
-    await persistAddons(nextAddons);
+    persistAddons(nextAddons);
     showToast(`تم إيقاف "${localizedTitle}"`);
   };
 
@@ -1401,7 +1422,7 @@ function useDashboardController({
     const defaults = (buildDefaultAddons(rest)[key] || {}) as Record<string, any>;
     const current = {
       ...defaults,
-      ...((addonsState[key] || {}) as Record<string, any>),
+      ...((addonsStateRef.current[key] || {}) as Record<string, any>),
     };
     setAddonDraft({ ...current });
     setAddonEditIntent(options?.enableOnSave ? 'enable' : 'edit');
@@ -1425,13 +1446,13 @@ function useDashboardController({
       const itemId = mode === 'dish' ? String(draftSnapshot.itemId || '').trim() : '';
       const linkedDish = itemId ? allItems.find((it) => it.id === itemId) : undefined;
       let title = String(draftSnapshot.title || '').trim();
-      if (mode === 'dish' && !itemId) {
+      if (shouldEnable && mode === 'dish' && !itemId) {
         return { ok: false, error: 'يرجى اختيار الطبق المطلوب للعرض الخاص.' };
       }
       if (!title && linkedDish?.n) {
         title = linkedDish.n;
       }
-      if (!title) return { ok: false, error: 'يرجى إدخال عنوان النافذة المنبثقة.' };
+      if (shouldEnable && !title) return { ok: false, error: 'يرجى إدخال عنوان النافذة المنبثقة.' };
       const rawSpecial = draftSnapshot.specialPrice;
       const parsedSpecial =
         mode === 'dish' &&
@@ -1464,7 +1485,7 @@ function useDashboardController({
 
     if (keySnapshot === 'announcementBar') {
       const text = String(draftSnapshot.text || '').trim();
-      if (!text) return { ok: false, error: 'يرجى إدخال نص الشريط الإعلاني.' };
+      if (shouldEnable && !text) return { ok: false, error: 'يرجى إدخال نص الشريط الإعلاني.' };
       draftSnapshot.text = text;
       draftSnapshot.bgColor = draftSnapshot.bgColor || '#C2410C';
       draftSnapshot.textColor = draftSnapshot.textColor || '#ffffff';
@@ -1473,7 +1494,7 @@ function useDashboardController({
     if (keySnapshot === 'countdownTimer') {
       const discountValue = Math.max(0, Number(draftSnapshot.discountValue ?? 0) || 0);
       const endHour = Math.min(23, Math.max(0, Math.floor(Number(draftSnapshot.endHour ?? 23))));
-      if (draftSnapshot.discountType !== 'fixed' && discountValue > 95) {
+      if (shouldEnable && draftSnapshot.discountType !== 'fixed' && discountValue > 95) {
         return { ok: false, error: 'نسبة الخصم يجب أن لا تتجاوز 95%.' };
       }
       draftSnapshot.title = String(draftSnapshot.title || 'عرض الساعة الذهبية').trim();
@@ -1501,7 +1522,7 @@ function useDashboardController({
 
     if (keySnapshot === 'freeGiftThreshold') {
       const giftName = String(draftSnapshot.giftName || '').trim();
-      if (!giftName) return { ok: false, error: 'يرجى إدخال اسم الهدية المجانية.' };
+      if (shouldEnable && !giftName) return { ok: false, error: 'يرجى إدخال اسم الهدية المجانية.' };
       draftSnapshot.giftName = giftName;
       draftSnapshot.minAmount = Math.max(0, Number(draftSnapshot.minAmount ?? 0) || 0);
     }
@@ -1510,7 +1531,7 @@ function useDashboardController({
       const pct = Math.min(90, Math.max(1, Number(draftSnapshot.discountPercent ?? 15) || 15));
       const startHour = Math.min(23, Math.max(0, Math.floor(Number(draftSnapshot.startHour ?? 14))));
       const endHour = Math.min(23, Math.max(0, Math.floor(Number(draftSnapshot.endHour ?? 17))));
-      if (startHour === endHour) {
+      if (shouldEnable && startHour === endHour) {
         return { ok: false, error: 'ساعة البداية والنهاية لا يمكن أن تكونا متطابقتين.' };
       }
       draftSnapshot.title = String(draftSnapshot.title || 'ساعة السعادة الذهبية').trim();
@@ -1524,7 +1545,7 @@ function useDashboardController({
         .split('\n')
         .map((s) => s.trim())
         .filter(Boolean);
-      if (prizes.length < 2) {
+      if (shouldEnable && prizes.length < 2) {
         return { ok: false, error: 'يرجى إدخال جائزتين على الأقل (كل جائزة في سطر).' };
       }
       draftSnapshot.title = String(draftSnapshot.title || 'جرّب حظك واربح خصماً فورياً!').trim();
@@ -1566,6 +1587,39 @@ function useDashboardController({
     }
   }, [editingAddonKey, addonEditIntent]);
 
+  const flushPendingAddonEdit = () => {
+    if (addonEditSyncTimerRef.current !== null) {
+      window.clearTimeout(addonEditSyncTimerRef.current);
+      addonEditSyncTimerRef.current = null;
+    }
+    if (!editingAddonKey || addonEditIntent !== 'edit') return;
+    const serialized = JSON.stringify(addonDraft);
+    if (!hydratedAddonSigRef.current || serialized === hydratedAddonSigRef.current) return;
+    const check = validateAndBuildAddonSnapshot(editingAddonKey, addonDraft, Boolean(addonDraft.enabled));
+    if (!check.ok) return;
+    hydratedAddonSigRef.current = serialized;
+    const latestAddons = addonsStateRef.current;
+    const currentExisting = (latestAddons[editingAddonKey] || {}) as Record<string, any>;
+    const nextAddons: RestaurantAddons = {
+      ...latestAddons,
+      [editingAddonKey]: {
+        ...currentExisting,
+        ...check.draftSnapshot,
+        configured: true,
+        enabled: Boolean(addonDraft.enabled),
+      },
+    };
+    persistAddons(nextAddons);
+    showToast('تم حفظ التغيرات');
+  };
+
+  const closeAddonEditModal = () => {
+    flushPendingAddonEdit();
+    setEditingAddonKey(null);
+    setAddonEditError('');
+    setAddonEditIntent('edit');
+  };
+
   useEffect(() => {
     if (!editingAddonKey || addonEditIntent !== 'edit') return;
     const serialized = JSON.stringify(addonDraft);
@@ -1576,14 +1630,15 @@ function useDashboardController({
     }
     const keySnapshot = editingAddonKey;
     const draftCopy = { ...addonDraft };
-    addonEditSyncTimerRef.current = window.setTimeout(async () => {
+    addonEditSyncTimerRef.current = window.setTimeout(() => {
       addonEditSyncTimerRef.current = null;
       const check = validateAndBuildAddonSnapshot(keySnapshot, draftCopy, Boolean(draftCopy.enabled));
       if (!check.ok) return;
       hydratedAddonSigRef.current = serialized;
-      const currentExisting = (addonsState[keySnapshot] || {}) as Record<string, any>;
+      const latestAddons = addonsStateRef.current;
+      const currentExisting = (latestAddons[keySnapshot] || {}) as Record<string, any>;
       const nextAddons: RestaurantAddons = {
-        ...addonsState,
+        ...latestAddons,
         [keySnapshot]: {
           ...currentExisting,
           ...check.draftSnapshot,
@@ -1591,7 +1646,7 @@ function useDashboardController({
           enabled: Boolean(draftCopy.enabled),
         },
       };
-      await persistAddons(nextAddons);
+      persistAddons(nextAddons);
       showToast('تم حفظ التغيرات');
     }, 150);
 
@@ -1602,12 +1657,13 @@ function useDashboardController({
     };
   }, [editingAddonKey, addonEditIntent, addonDraft]);
 
-  const handleSaveAddonEdit = async (e: React.FormEvent) => {
+  const handleSaveAddonEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingAddonKey || addonSaving) return;
     const meta = ADDON_CATALOG.find((a) => a.key === editingAddonKey);
     const keySnapshot = editingAddonKey;
-    const currentExisting = (addonsState[keySnapshot] || {}) as Record<string, any>;
+    const latestAddons = addonsStateRef.current;
+    const currentExisting = (latestAddons[keySnapshot] || {}) as Record<string, any>;
     const shouldEnable =
       addonEditIntent === 'enable' ? true : Boolean(addonDraft.enabled);
 
@@ -1626,7 +1682,7 @@ function useDashboardController({
     setAddonSaving(true);
     try {
       const nextAddons: RestaurantAddons = {
-        ...addonsState,
+        ...latestAddons,
         [keySnapshot]: {
           ...currentExisting,
           ...check.draftSnapshot,
@@ -1634,11 +1690,11 @@ function useDashboardController({
           enabled: shouldEnable,
         },
       };
-      await persistAddons(nextAddons);
+      persistAddons(nextAddons);
       setEditingAddonKey(null);
       setAddonEditIntent('edit');
       const addonTitle = meta?.title || 'الإضافة';
-      showToast(shouldEnable ? `تم تفعيل "${addonTitle}"` : 'تم حفظ التغيرات');
+      showToast(shouldEnable ? `تم تفعيل "${addonTitle}"` : `تم إيقاف "${addonTitle}"`);
     } finally {
       setAddonSaving(false);
     }
@@ -2992,9 +3048,10 @@ function useDashboardController({
         }
         const check = validateAndBuildAddonSnapshot(editingAddonKey, addonDraft, Boolean(addonDraft.enabled));
         if (check.ok) {
-          const currentExisting = (addonsState[editingAddonKey] || {}) as Record<string, any>;
-          await persistAddons({
-            ...addonsState,
+          const latestAddons = addonsStateRef.current;
+          const currentExisting = (latestAddons[editingAddonKey] || {}) as Record<string, any>;
+          persistAddons({
+            ...latestAddons,
             [editingAddonKey]: {
               ...currentExisting,
               ...check.draftSnapshot,
@@ -3172,6 +3229,7 @@ function useDashboardController({
     handleToggleAddon,
     handleOpenAddonEdit,
     handleSaveAddonEdit,
+    closeAddonEditModal,
     // Categories
     searchCatQuery,
     setSearchCatQuery,
